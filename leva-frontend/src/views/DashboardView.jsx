@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { mockTools } from '../data/mockData';
 import AppIcon from '../components/AppIcon';
+import { bookmarkService } from '../services/bookmarkService';
+import { taskService } from '../services/taskService';
+import { toolService } from '../services/toolService';
 
 // --- Category tag color helper
 const tagClass = (cat) => {
@@ -14,6 +16,7 @@ const tagClass = (cat) => {
 };
 
 const pricingMeta = (pricingType) => {
+  const normalizedType = pricingType === 'open_source' ? 'opensource' : pricingType;
   const map = {
     free: { label: 'Free', bg: '#DCFCE7', color: '#15803D' },
     freemium: { label: 'Freemium', bg: '#FEF3C7', color: '#B45309' },
@@ -21,7 +24,41 @@ const pricingMeta = (pricingType) => {
     opensource: { label: 'Open-source', bg: '#DBEAFE', color: '#1D4ED8' },
   };
 
-  return map[pricingType] || map.free;
+  return map[normalizedType] || map.free;
+};
+
+const iconByCategory = {
+  Research: 'search',
+  Writing: 'pencil',
+  Coding: 'task',
+  Data: 'dashboard',
+  Academic: 'book',
+  Productivity: 'folder',
+};
+
+const resolveToolUrl = (url) => {
+  if (!url) return '';
+  return url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+};
+
+const displayToolUrl = (url) => (url ? url.replace(/^https?:\/\//, '') : '');
+
+const normalizeTool = (tool) => {
+  const pricingTypeRaw = tool.pricing_type ?? tool.pricingType ?? 'free';
+  const pricingType = typeof pricingTypeRaw === 'string'
+    ? pricingTypeRaw.toLowerCase()
+    : 'free';
+  return {
+    id: tool.id,
+    name: tool.name,
+    url: tool.url,
+    category: tool.category,
+    pricingType,
+    rating: Number(tool.rating ?? 0),
+    desc: tool.description ?? tool.desc ?? '',
+    detailDesc: tool.description ?? tool.detailDesc ?? tool.desc ?? '',
+    iconKey: iconByCategory[tool.category] ?? 'sparkles',
+  };
 };
 
 function PricingBadge({ pricingType }) {
@@ -60,7 +97,7 @@ function ToolTooltip({ tool, show }) {
       {/* UI/UX Fix: Step 7 — Tooltip/balloon tip sebagai presentation control untuk info harga. Survei: 33,9% user terbentur paywall; Persona Bima butuh filter harga instan. */}
       <p className="tool-tooltip-title">{tool.name}</p>
       <p className="tool-tooltip-line">Status: <strong style={{ color: price.color }}>{price.label}</strong></p>
-      <p className="tool-tooltip-line">Website: {tool.url}</p>
+      <p className="tool-tooltip-line">Website: {displayToolUrl(tool.url)}</p>
       <p className="tool-tooltip-desc">{detailText}</p>
       <span className="tool-tooltip-arrow" />
     </div>
@@ -78,11 +115,11 @@ function StarRating({ rating }) {
 }
 
 // --- Featured Tool Card (large, horizontal scroll)
-function FeaturedToolCard({ tool, onSave, isSaved }) {
+function FeaturedToolCard({ tool, onSave, isSaved, isSaving }) {
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipTimerRef = useRef(null);
   const handleSave = () => {
-    if (isSaved) return;
+    if (isSaved || isSaving) return;
     onSave(tool);
   };
 
@@ -145,7 +182,7 @@ function FeaturedToolCard({ tool, onSave, isSaved }) {
 
       <div style={{ display: 'flex', gap: 8, marginTop: 16 }}>
         <button
-          disabled={isSaved}
+          disabled={isSaved || isSaving}
           onClick={handleSave}
           style={{
             flex: 1,
@@ -156,14 +193,14 @@ function FeaturedToolCard({ tool, onSave, isSaved }) {
             background: isSaved ? '#E2E8F0' : 'var(--color-primary-light)',
             color: isSaved ? '#64748B' : 'var(--color-primary)',
             fontWeight: 600,
-            cursor: isSaved ? 'not-allowed' : 'pointer',
+            cursor: isSaved || isSaving ? 'not-allowed' : 'pointer',
           }}
         >
           {/* UI/UX Fix: Step 6 — Output device harus memberi respond jelas ke aksi user. Step 7 — Aksi destruktif (hapus) harus ada safeguard/konfirmasi. Survei: 52,5% user sulit temukan referensi. */}
-          {isSaved ? 'Tersimpan ✓' : 'Simpan'}
+          {isSaved ? 'Tersimpan ✓' : isSaving ? 'Menyimpan...' : 'Simpan'}
         </button>
         <a
-          href={`https://${tool.url}`} target="_blank" rel="noreferrer"
+          href={resolveToolUrl(tool.url)} target="_blank" rel="noreferrer"
           style={{
             flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
             background: 'var(--color-primary)', color: '#fff',
@@ -181,11 +218,11 @@ function FeaturedToolCard({ tool, onSave, isSaved }) {
 }
 
 // --- Small Tool Card (grid)
-function SmallToolCard({ tool, onSave, isSaved }) {
+function SmallToolCard({ tool, onSave, isSaved, isSaving }) {
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipTimerRef = useRef(null);
   const handleSave = () => {
-    if (isSaved) return;
+    if (isSaved || isSaving) return;
     onSave(tool);
   };
 
@@ -240,7 +277,7 @@ function SmallToolCard({ tool, onSave, isSaved }) {
           <span style={{ fontWeight: 700, fontSize: 14 }}>{tool.name}</span>
         </div>
         <button
-          disabled={isSaved}
+          disabled={isSaved || isSaving}
           onClick={handleSave}
           title="Simpan ke Library"
           style={{
@@ -249,35 +286,214 @@ function SmallToolCard({ tool, onSave, isSaved }) {
             border: isSaved ? '1px solid #CBD5E1' : '1px solid #D7D2FF',
             borderRadius: 8,
             padding: '5px 9px',
-            cursor: isSaved ? 'not-allowed' : 'pointer',
+            cursor: isSaved || isSaving ? 'not-allowed' : 'pointer',
             fontSize: 11,
             fontWeight: 700,
           }}
         >
-          {isSaved ? 'Tersimpan ✓' : 'Simpan'}
+          {isSaved ? 'Tersimpan ✓' : isSaving ? 'Menyimpan...' : 'Simpan'}
         </button>
       </div>
       <p style={{ margin: '0 0 10px', fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
         {tool.desc}
       </p>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)' }}>{tool.url}</span>
+        <span style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-text-secondary)' }}>{displayToolUrl(tool.url)}</span>
         <StarRating rating={tool.rating} />
       </div>
     </div>
   );
 }
 
+function DailyProgressWidget({
+  greeting,
+  greetIcon,
+  firstName,
+  dateLabel,
+  stats,
+  isLoading,
+  hasLatestTask,
+  onContinue,
+}) {
+  const progressPct = isLoading ? 0 : stats.progressPct;
+  const statValue = (value) => (isLoading ? '--' : value);
+
+  const statItems = [
+    { label: 'Tugas Hari Ini', value: statValue(stats.tasksToday) },
+    { label: 'Sub-tugas Selesai', value: statValue(stats.doneToday) },
+    { label: 'Sub-tugas Tertunda', value: statValue(stats.pendingToday) },
+  ];
+
+  return (
+    <section className="card" style={{ padding: 24, marginBottom: 28 }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16, flexWrap: 'wrap' }}>
+        <div>
+          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
+            {greeting}, {firstName}! <AppIcon name={greetIcon} size={20} />
+          </h1>
+          <p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--color-text-secondary)' }}>
+            Ringkasan produktivitasmu hari ini.
+          </p>
+        </div>
+        <div style={{ textAlign: 'right' }}>
+          <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>{dateLabel}</p>
+          <span style={{
+            display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 11, fontWeight: 600,
+            background: 'var(--color-secondary-light)', color: 'var(--color-secondary)',
+            padding: '3px 10px', borderRadius: 999,
+          }}>
+            <AppIcon name="refresh" size={12} /> Diperbarui otomatis setiap hari
+          </span>
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 12, marginTop: 20 }}>
+        {statItems.map((item) => (
+          <div key={item.label} style={{ padding: '12px 14px', borderRadius: 12, background: 'var(--color-bg)' }}>
+            <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-secondary)' }}>{item.label}</p>
+            <p style={{ margin: '6px 0 0', fontSize: 20, fontWeight: 700, color: 'var(--color-text-primary)' }}>{item.value}</p>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: 18 }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
+          <span>Progress hari ini</span>
+          <span>{progressPct}% selesai</span>
+        </div>
+        <div style={{ height: 8, borderRadius: 999, background: 'var(--color-border)', overflow: 'hidden' }}>
+          <div style={{ width: `${progressPct}%`, height: '100%', background: 'var(--color-secondary)', transition: 'width 0.4s ease' }} />
+        </div>
+      </div>
+
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
+        <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>
+          {hasLatestTask ? 'Lanjutkan tugas terakhir yang sudah kamu buat.' : 'Belum ada tugas yang bisa dilanjutkan.'}
+        </p>
+        <button
+          type="button"
+          className="btn-primary"
+          onClick={onContinue}
+          disabled={!hasLatestTask}
+          style={{ padding: '10px 16px', fontSize: 13, opacity: hasLatestTask ? 1 : 0.6, cursor: hasLatestTask ? 'pointer' : 'not-allowed' }}
+        >
+          Lanjutkan Tugas Terakhir
+        </button>
+      </div>
+    </section>
+  );
+}
+
 // --- Main Dashboard View
 export default function DashboardView() {
-  const { user, saveToolToLibrary, setActiveView, savedTools } = useApp();
+  const {
+    user,
+    setActiveView,
+    setActiveTask,
+    savedTools,
+    refreshSavedTools,
+    showToast,
+  } = useApp();
   const [activeFilter, setActiveFilter] = useState('Semua');
-  const [mounted, setMounted] = useState(false);
+  const [tools, setTools] = useState([]);
+  const [isLoadingTools, setIsLoadingTools] = useState(true);
+  const [toolsError, setToolsError] = useState('');
+  const [isLoadingStats, setIsLoadingStats] = useState(true);
+  const [dailyStats, setDailyStats] = useState({
+    tasksToday: 0,
+    doneToday: 0,
+    pendingToday: 0,
+    progressPct: 0,
+  });
+  const [latestTask, setLatestTask] = useState(null);
   const [showAllFeatured, setShowAllFeatured] = useState(false);
+  const [savingToolIds, setSavingToolIds] = useState([]);
+
+  const fetchTools = async (category = activeFilter) => {
+    setIsLoadingTools(true);
+    setToolsError('');
+    setTools([]);
+
+    try {
+      const params = { per_page: 12 };
+      if (category && category !== 'Semua') {
+        params.category = category;
+      }
+
+      const data = await toolService.list(params);
+      setTools((data.tools ?? []).map(normalizeTool));
+    } catch (error) {
+      const message = error.response?.data?.message ?? 'Gagal memuat tools. Coba lagi.';
+      setToolsError(message);
+    } finally {
+      setIsLoadingTools(false);
+    }
+  };
 
   useEffect(() => {
-    const timer = setTimeout(() => setMounted(true), 600);
-    return () => clearTimeout(timer);
+    fetchTools(activeFilter);
+  }, [activeFilter]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchStats = async () => {
+      setIsLoadingStats(true);
+      try {
+        const data = await taskService.list();
+        const tasks = data.tasks ?? [];
+        const today = new Date();
+        const todayLabel = today.toDateString();
+
+        const tasksToday = tasks.filter((task) => {
+          if (!task.created_at) return false;
+          return new Date(task.created_at).toDateString() === todayLabel;
+        });
+
+        const totals = tasksToday.reduce(
+          (acc, task) => {
+            const total = Number(task.sub_tasks_count ?? 0);
+            const completed = Number(task.completed_count ?? 0);
+            return {
+              total: acc.total + total,
+              completed: acc.completed + completed,
+            };
+          },
+          { total: 0, completed: 0 }
+        );
+
+        const pending = Math.max(totals.total - totals.completed, 0);
+        const progressPct = totals.total > 0
+          ? Math.round((totals.completed / totals.total) * 100)
+          : 0;
+
+        if (!isMounted) return;
+
+        setDailyStats({
+          tasksToday: tasksToday.length,
+          doneToday: totals.completed,
+          pendingToday: pending,
+          progressPct,
+        });
+        setLatestTask(tasks[0] ?? null);
+      } catch {
+        if (!isMounted) return;
+        setDailyStats({ tasksToday: 0, doneToday: 0, pendingToday: 0, progressPct: 0 });
+      } finally {
+        if (!isMounted) return;
+        setIsLoadingStats(false);
+      }
+    };
+
+    fetchStats();
+
+    if (refreshSavedTools) {
+      refreshSavedTools().catch(() => {});
+    }
+
+    return () => {
+      isMounted = false;
+    };
   }, []);
 
   const firstName = user ? user.name.split(' ')[0] : 'Renisa';
@@ -291,70 +507,75 @@ export default function DashboardView() {
 
   const FILTERS = ['Semua', 'Research', 'Writing', 'Coding', 'Data', 'Academic', 'Productivity'];
 
-  const featuredTools = mockTools;
+  const featuredTools = tools;
   const visibleFeaturedTools = showAllFeatured ? featuredTools : featuredTools.slice(0, 6);
-  const filteredTools = activeFilter === 'Semua'
-    ? mockTools
-    : mockTools.filter(t => t.category === activeFilter);
-  const savedToolNames = new Set(savedTools.map((tool) => tool.name.toLowerCase()));
+  const filteredTools = tools;
+  const savedToolIds = new Set(
+    savedTools
+      .map((bookmark) => bookmark?.tool?.id ?? bookmark?.tool_id ?? bookmark?.id)
+      .filter(Boolean)
+  );
+
+  const handleSaveTool = async (tool) => {
+    if (savedToolIds.has(tool.id)) {
+      showToast('Tool sudah ada di Library.', 'info');
+      return;
+    }
+
+    if (savingToolIds.includes(tool.id)) return;
+    setSavingToolIds((prev) => [...prev, tool.id]);
+
+    try {
+      await bookmarkService.create(tool.id);
+      showToast('AI sedang men-tag tool... cek di Library beberapa detik lagi', 'success');
+      if (refreshSavedTools) {
+        await refreshSavedTools();
+      }
+    } catch (error) {
+      const message = error.response?.data?.message ?? 'Gagal menyimpan tool. Coba lagi.';
+      showToast(message, 'error');
+    } finally {
+      setSavingToolIds((prev) => prev.filter((toolId) => toolId !== tool.id));
+    }
+  };
 
   const handleReplayTour = () => {
     window.dispatchEvent(new CustomEvent('leva:open-dashboard-tour'));
   };
 
-  if (!mounted) return (
-    <div className="main-content view-enter" style={{ padding: '32px 36px' }}>
-      {[200, 300, 100].map((w, i) => (
-        <div key={i} style={{ height: 20, width: w, background: 'var(--color-border)', borderRadius: 8, marginBottom: 10, animation: 'pulse 1.5s infinite' }} />
-      ))}
-      <div style={{ display: 'flex', gap: 16, marginTop: 24 }}>
-        {[1, 2, 3, 4].map(i => (
-          <div key={i} style={{ width: 260, height: 200, background: 'var(--color-border)', borderRadius: 16, animation: 'pulse 1.5s infinite' }} />
-        ))}
-      </div>
-    </div>
-  );
+  const handleFilterChange = (filter) => {
+    setActiveFilter(filter);
+    setShowAllFeatured(false);
+  };
+
+  const toolSkeletons = Array.from({ length: 6 }, (_, index) => (
+    <div
+      key={`tool-skeleton-${index}`}
+      style={{ height: 200, background: 'var(--color-border)', borderRadius: 16, animation: 'pulse 1.5s infinite' }}
+    />
+  ));
+
+  const handleContinueLatestTask = () => {
+    if (!latestTask) return;
+    setActiveTask({
+      id: latestTask.task_id,
+      title: latestTask.title,
+    });
+    setActiveView('chat');
+  };
 
   return (
     <div className="main-content view-enter" style={{ padding: '32px 36px', maxWidth: 1100, margin: '0 auto' }}>
-
-      {/* -- Header */}
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
-        <div>
-          <h1 style={{ margin: 0, fontSize: 26, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-            {greeting}, {firstName}! <AppIcon name={greetIcon} size={20} />
-          </h1>
-          <p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--color-text-secondary)' }}>
-            Ini rekomendasi tools AI hari ini yang relevan untuk <strong>{jurusan}</strong> kamu.
-          </p>
-        </div>
-        <div style={{ textAlign: 'right' }}>
-          <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>{today}</p>
-          <span style={{
-            display: 'inline-flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 11, fontWeight: 600,
-            background: 'var(--color-secondary-light)', color: 'var(--color-secondary)',
-            padding: '3px 10px', borderRadius: 999,
-          }}>
-            <AppIcon name="refresh" size={12} /> Diperbarui otomatis setiap hari
-          </span>
-          <div style={{ marginTop: 8 }}>
-            <button
-              type="button"
-              className="btn-ghost"
-              onClick={handleReplayTour}
-              style={{
-                padding: '6px 12px',
-                fontSize: 12,
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 6,
-              }}
-            >
-              <AppIcon name="sparkles" size={12} /> Lihat Tour Lagi
-            </button>
-          </div>
-        </div>
-      </div>
+      <DailyProgressWidget
+        greeting={greeting}
+        greetIcon={greetIcon}
+        firstName={firstName}
+        dateLabel={today}
+        stats={dailyStats}
+        isLoading={isLoadingStats}
+        hasLatestTask={Boolean(latestTask)}
+        onContinue={handleContinueLatestTask}
+      />
 
       {/* UI/UX Fix: Step 7 — Display as many choices as possible (grid vs scroll). Drop-down untuk sorting meminimalisir pencarian manual. Survei: 52,5% kesulitan temukan referensi tersimpan. */}
       {/* -- Featured Tools (responsive grid) */}
@@ -376,14 +597,33 @@ export default function DashboardView() {
             <AppIcon name="sparkles" size={12} /> Mulai Tutorial
           </button>
         </div>
-        {visibleFeaturedTools.length > 0 ? (
+        {toolsError ? (
+          <div className="card" style={{ padding: '24px 20px', textAlign: 'center' }}>
+            <p style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+              {toolsError}
+            </p>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => fetchTools(activeFilter)}
+              style={{ padding: '8px 14px', fontSize: 12 }}
+            >
+              Coba Lagi
+            </button>
+          </div>
+        ) : isLoadingTools ? (
+          <div className="tool-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            {toolSkeletons}
+          </div>
+        ) : visibleFeaturedTools.length > 0 ? (
           <div className="tool-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
             {visibleFeaturedTools.map(tool => (
               <FeaturedToolCard
                 key={tool.id}
                 tool={tool}
-                onSave={saveToolToLibrary}
-                isSaved={savedToolNames.has(tool.name.toLowerCase())}
+                onSave={handleSaveTool}
+                isSaved={savedToolIds.has(tool.id)}
+                isSaving={savingToolIds.includes(tool.id)}
               />
             ))}
           </div>
@@ -404,7 +644,7 @@ export default function DashboardView() {
             </button>
           </div>
         )}
-        {!showAllFeatured && featuredTools.length > 6 && visibleFeaturedTools.length > 0 && (
+        {!showAllFeatured && featuredTools.length > 6 && visibleFeaturedTools.length > 0 && !isLoadingTools && !toolsError && (
           <div style={{ display: 'flex', justifyContent: 'center', marginTop: 14 }}>
             <button
               className="btn-ghost"
@@ -422,7 +662,7 @@ export default function DashboardView() {
         {FILTERS.map(f => (
           <button
             key={f}
-            onClick={() => setActiveFilter(f)}
+            onClick={() => handleFilterChange(f)}
             style={{
               padding: '6px 16px', borderRadius: 999, fontSize: 13, fontWeight: 500,
               cursor: 'pointer', border: 'none', transition: 'all 0.2s',
@@ -445,23 +685,43 @@ export default function DashboardView() {
             fontSize: 12, fontWeight: 600, background: 'var(--color-primary-light)',
             color: 'var(--color-primary)', padding: '2px 8px', borderRadius: 999,
           }}>
-            {filteredTools.length} tools
+            {isLoadingTools ? 'Memuat...' : `${filteredTools.length} tools`}
           </span>
         </div>
-        <div className="tool-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
-          {filteredTools.map(tool => (
-            <SmallToolCard
-              key={tool.id}
-              tool={tool}
-              onSave={saveToolToLibrary}
-              isSaved={savedToolNames.has(tool.name.toLowerCase())}
-            />
-          ))}
-        </div>
-        {filteredTools.length === 0 && (
+        {toolsError ? (
+          <div className="card" style={{ padding: '24px 20px', textAlign: 'center' }}>
+            <p style={{ margin: '0 0 8px', fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>
+              {toolsError}
+            </p>
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => fetchTools(activeFilter)}
+              style={{ padding: '8px 14px', fontSize: 12 }}
+            >
+              Coba Lagi
+            </button>
+          </div>
+        ) : isLoadingTools ? (
+          <div className="tool-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            {toolSkeletons}
+          </div>
+        ) : filteredTools.length > 0 ? (
+          <div className="tool-grid-3" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16 }}>
+            {filteredTools.map(tool => (
+              <SmallToolCard
+                key={tool.id}
+                tool={tool}
+                onSave={handleSaveTool}
+                isSaved={savedToolIds.has(tool.id)}
+                isSaving={savingToolIds.includes(tool.id)}
+              />
+            ))}
+          </div>
+        ) : (
           <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--color-text-secondary)' }}>
             <span style={{ display: 'inline-flex' }}><AppIcon name="search" size={36} /></span>
-            <p>Tidak ada tool untuk kategori ini.</p>
+            <p>Belum ada tools untuk kategori ini.</p>
           </div>
         )}
       </section>

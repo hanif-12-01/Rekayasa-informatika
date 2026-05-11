@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { mockSubTasks, mockTools } from '../data/mockData';
 import AppIcon from '../components/AppIcon';
 import Modal from '../components/Modal';
+import { bookmarkService } from '../services/bookmarkService';
+import { chatService } from '../services/chatService';
+import { taskService } from '../services/taskService';
 import { playSoundEffect } from '../utils/sound';
 
 // --- Tag color helper
@@ -18,8 +20,17 @@ const tagStyle = (cat) => {
   return map[cat] || { bg: '#F1F5F9', color: '#64748B' };
 };
 
+const iconByCategory = {
+  Research: 'search',
+  Writing: 'pencil',
+  Coding: 'task',
+  Data: 'dashboard',
+  Academic: 'book',
+  Productivity: 'folder',
+};
+
 const MAX_ATTACHMENT_SIZE_BYTES = 10 * 1024 * 1024;
-const ACCEPTED_ATTACHMENT_EXTENSIONS = ['pdf', 'txt'];
+const ACCEPTED_ATTACHMENT_EXTENSIONS = ['pdf'];
 const QUICK_PROMPTS_BY_JURUSAN = {
   teknikInformatika: ['Bantu susun skripsi', 'Debug kode Python', 'Review jurnal IEEE', 'Belajar framework baru'],
   ilmuKomunikasi: ['Analisis konten media', 'Susun proposal riset', 'Review teori komunikasi', 'Buat kerangka esai'],
@@ -37,14 +48,14 @@ const validateAttachment = (file) => {
 
   const extension = getFileExtension(file.name);
   if (!ACCEPTED_ATTACHMENT_EXTENSIONS.includes(extension)) {
-    return 'Format file belum didukung. Saat ini Leva menerima file PDF dan TXT.';
+    return 'Format file belum didukung. Saat ini Leva hanya menerima file PDF.';
   }
 
   return '';
 };
 
 const getGeneratedTaskTitle = (text, jurusan, attachedFile) => {
-  const raw = text.toLowerCase();
+  const raw = (text ?? '').toLowerCase();
 
   if (attachedFile?.name) return `Memecah Tugas dari ${attachedFile.name}`;
   if (raw.includes('skripsi')) return `Menyusun Skripsi ${jurusan}`;
@@ -57,7 +68,7 @@ const getGeneratedTaskTitle = (text, jurusan, attachedFile) => {
 
 const getEstimatedProcessingMs = ({ text, attachedFile }) => {
   const baseMs = 12000;
-  const textComplexityMs = Math.min(text.trim().length * 45, 15000);
+  const textComplexityMs = Math.min((text ?? '').trim().length * 45, 15000);
   const attachmentMs = attachedFile ? 5000 : 0;
   return Math.min(baseMs + textComplexityMs + attachmentMs, 32000);
 };
@@ -69,11 +80,27 @@ const getProcessingMessage = (elapsedSeconds) => {
   return 'Hampir selesai, mohon tunggu sebentar...';
 };
 
+const resolveToolUrl = (url) => {
+  if (!url) return '';
+  return url.startsWith('http://') || url.startsWith('https://') ? url : `https://${url}`;
+};
+
+const normalizeSubTask = (subTask) => ({
+  id: subTask.sub_task_id ?? subTask.id,
+  title: subTask.actionable_title ?? subTask.title ?? '',
+  deskripsi: subTask.description ?? '',
+  tips: subTask.tips ?? '',
+  kategori: subTask.category ?? subTask.kategori ?? '',
+  estimasi: subTask.estimated_duration ?? subTask.estimasi ?? '',
+  status: subTask.status ?? 'next',
+  order: subTask.order ?? 0,
+  recommended_tools: Array.isArray(subTask.recommended_tools) ? subTask.recommended_tools : [],
+});
+
 const RAG_ERROR_MESSAGE = 'Maaf, Leva belum bisa memproses tugasmu saat ini. Coba ulangi atau tulis ulang dengan deskripsi yang lebih spesifik.';
 
 // --- Subtask Card
-function SubTaskCard({ task, index, isExpanded, onToggle, onMarkDone, onSaveTool, isDoneJustNow }) {
-  const tools = mockTools.filter(t => task.toolIds.includes(t.id));
+function SubTaskCard({ task, index, isExpanded, onToggle, onMarkDone, isDoneJustNow }) {
   const ts = tagStyle(task.kategori);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
 
@@ -186,8 +213,8 @@ function SubTaskCard({ task, index, isExpanded, onToggle, onMarkDone, onSaveTool
 }
 
 // --- Right Panel: Tool Recommendations
-function RightPanel({ task, isOpen, onSave, savedToolNames, onCopyTips, copiedTipsTaskId }) {
-  const tools = task ? mockTools.filter(t => task.toolIds.includes(t.id)) : [];
+function RightPanel({ task, isOpen, onSave, isToolSaved, onCopyTips, copiedTipsTaskId }) {
+  const tools = task?.recommended_tools ?? [];
 
   return (
     <div
@@ -214,7 +241,9 @@ function RightPanel({ task, isOpen, onSave, savedToolNames, onCopyTips, copiedTi
               REKOMENDASI TOOLS AI
             </p>
             {tools.map(tool => {
-              const isSaved = savedToolNames.has(tool.name.toLowerCase());
+              const isSaved = isToolSaved(tool);
+              const iconKey = iconByCategory[tool.category] ?? 'sparkles';
+              const description = tool.description ?? '';
 
               return (
               <div
@@ -224,17 +253,17 @@ function RightPanel({ task, isOpen, onSave, savedToolNames, onCopyTips, copiedTi
               >
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                    <span style={{ display: 'flex' }}><AppIcon name={tool.iconKey} size={18} /></span>
+                    <span style={{ display: 'flex' }}><AppIcon name={iconKey} size={18} /></span>
                     <span style={{ fontWeight: 600, fontSize: 14 }}>{tool.name}</span>
                   </div>
                   <a
-                    href={`https://${tool.url}`} target="_blank" rel="noreferrer"
+                    href={resolveToolUrl(tool.url)} target="_blank" rel="noreferrer"
                     aria-label={`Buka ${tool.name}`}
                     style={{ display: 'flex', color: 'var(--color-primary)', textDecoration: 'none' }}
                   ><AppIcon name="external-link" size={14} /></a>
                 </div>
                 <p style={{ margin: '6px 0 10px', fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
-                  {tool.desc.slice(0, 70)}...
+                  {description ? `${description.slice(0, 70)}...` : 'Deskripsi belum tersedia.'}
                 </p>
                 <button
                   disabled={isSaved}
@@ -300,25 +329,28 @@ export default function ChatWorkspaceView() {
     setActiveTask,
     setActiveView,
     setChatHasDraft,
-    saveToolToLibrary,
     savedTools,
+    refreshSavedTools,
+    refreshHistoryTasks,
     showToast,
     soundEnabled,
   } = useApp();
-  const firstName = user ? user.name.split(' ')[0] : 'Renisa';
-  const jurusan   = user ? user.jurusan : 'Teknik Informatika';
+  const firstName = user?.name ? user.name.split(' ')[0] : 'Renisa';
+  const jurusan   = user?.jurusan ?? 'Teknik Informatika';
 
   const [inputVal, setInputVal]         = useState('');
   const [taskTitle, setTaskTitle]       = useState('');
   const [subTasks, setSubTasks]         = useState([]);
   const [expandedId, setExpandedId]     = useState(null);
   const [isLoading, setIsLoading]       = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [followUpVal, setFollowUpVal]   = useState('');
-  const [followUpReply, setFollowUpReply] = useState('');
+  const [followUpMessages, setFollowUpMessages] = useState([]);
   const [attachedFile, setAttachedFile] = useState(null);
   const [fileError, setFileError]       = useState('');
   const [ragError, setRagError]         = useState('');
   const [lastSubmission, setLastSubmission] = useState(null);
+  const [currentTaskId, setCurrentTaskId] = useState(null);
   const [loadingElapsedSeconds, setLoadingElapsedSeconds] = useState(0);
   const [estimatedProcessingSeconds, setEstimatedProcessingSeconds] = useState(15);
   const [isDraggingFile, setIsDraggingFile] = useState(false);
@@ -359,13 +391,15 @@ export default function ChatWorkspaceView() {
     setSubTasks([]);
     setExpandedId(null);
     setIsLoading(false);
+    setIsLoadingHistory(false);
     setInputVal('');
     setFollowUpVal('');
-    setFollowUpReply('');
+    setFollowUpMessages([]);
     setAttachedFile(null);
     setFileError('');
     setRagError('');
     setLastSubmission(null);
+    setCurrentTaskId(null);
     setLoadingElapsedSeconds(0);
     setEstimatedProcessingSeconds(15);
     setShowLeaveDraftModal(false);
@@ -382,13 +416,45 @@ export default function ChatWorkspaceView() {
 
   // Load from history task if set
   useEffect(() => {
-    if (activeTask) {
-      setTaskTitle('Menyusun Skripsi ' + jurusan);
-      setSubTasks(mockSubTasks.map(t => ({ ...t })));
-      setExpandedId(1);
-    } else {
-      resetWorkspace();
-    }
+    let isMounted = true;
+
+    const loadTask = async () => {
+      if (!activeTask) {
+        resetWorkspace();
+        return;
+      }
+
+      const taskId = activeTask.task_id ?? activeTask.id;
+      if (!taskId) return;
+
+      setIsLoadingHistory(true);
+      setRagError('');
+      setFollowUpMessages([]);
+
+      try {
+        const task = await taskService.get(taskId);
+        if (!isMounted) return;
+
+        const normalizedSubTasks = (task.sub_tasks ?? []).map(normalizeSubTask);
+
+        setTaskTitle(task.title ?? activeTask.title ?? 'Tugas Aktif');
+        setSubTasks(normalizedSubTasks);
+        setExpandedId(normalizedSubTasks[0]?.id ?? null);
+        setCurrentTaskId(task.task_id ?? taskId);
+      } catch {
+        if (!isMounted) return;
+        setRagError('Gagal memuat detail task. Coba lagi sebentar.');
+      } finally {
+        if (!isMounted) return;
+        setIsLoadingHistory(false);
+      }
+    };
+
+    loadTask();
+
+    return () => {
+      isMounted = false;
+    };
   }, [activeTask]);
 
   useEffect(() => {
@@ -403,7 +469,7 @@ export default function ChatWorkspaceView() {
     completionAnimationTimersRef.current.forEach((timerId) => clearTimeout(timerId));
   }, []);
 
-  const hasUnsentDraft = inputVal.trim().length > 0;
+  const hasUnsentDraft = inputVal.trim().length > 0 || Boolean(attachedFile);
 
   useEffect(() => {
     hasUnsentDraftRef.current = hasUnsentDraft;
@@ -496,43 +562,10 @@ export default function ChatWorkspaceView() {
     setFileError('');
   };
 
-  const runMockRag = (submissionPayload) => {
-    const text = submissionPayload.text.trim();
-    const estimatedMs = getEstimatedProcessingMs(submissionPayload);
-    const loweredText = text.toLowerCase();
-
-    const ragPromise = new Promise((resolve, reject) => {
-      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
-        reject(new Error('offline'));
-        return;
-      }
-
-      if (loweredText.includes('server error') || loweredText.includes('server gagal')) {
-        setTimeout(() => reject(new Error('server-error')), 1200);
-        return;
-      }
-
-      setTimeout(() => {
-        resolve({
-          title: getGeneratedTaskTitle(text, jurusan, submissionPayload.attachedFile),
-          subTasks: mockSubTasks.map((task) => ({ ...task })),
-        });
-      }, estimatedMs);
-    });
-
-    let timeoutHandle;
-    const timeoutPromise = new Promise((_, reject) => {
-      timeoutHandle = setTimeout(() => reject(new Error('timeout')), 45000);
-    });
-
-    return Promise.race([ragPromise, timeoutPromise]).finally(() => {
-      if (timeoutHandle) clearTimeout(timeoutHandle);
-    });
-  };
-
   const submitTaskToRag = async (submissionPayload) => {
-    const trimmedText = submissionPayload.text.trim();
-    if (!trimmedText || isLoading) return;
+    const trimmedText = (submissionPayload.text ?? '').trim();
+    const hasFile = Boolean(submissionPayload.attachedFile);
+    if ((!trimmedText && !hasFile) || isLoading) return;
 
     const estimatedMs = getEstimatedProcessingMs(submissionPayload);
 
@@ -543,19 +576,43 @@ export default function ChatWorkspaceView() {
     setTaskTitle('');
     setSubTasks([]);
     setExpandedId(null);
+    setFollowUpMessages([]);
 
     try {
-      const ragResult = await runMockRag(submissionPayload);
-      setTaskTitle(ragResult.title);
-      setSubTasks(ragResult.subTasks);
-      setExpandedId(1);
-      setInputVal('');
-      setAttachedFile(null);
-      setFileError('');
-      setRagError('');
-    } catch {
-      setRagError(RAG_ERROR_MESSAGE);
-    } finally {
+      const result = await taskService.submit(submissionPayload.text, submissionPayload.attachedFile);
+      const taskId = result.task_id ?? result.id;
+
+      setCurrentTaskId(taskId ?? null);
+
+      taskService.pollStatus(
+        taskId,
+        async (taskFromPoll) => {
+          const task = taskFromPoll ?? await taskService.get(taskId);
+          const normalizedSubTasks = (task.sub_tasks ?? []).map(normalizeSubTask);
+
+          setTaskTitle(task.title ?? getGeneratedTaskTitle(trimmedText, jurusan, submissionPayload.attachedFile));
+          setSubTasks(normalizedSubTasks);
+          setExpandedId(normalizedSubTasks[0]?.id ?? null);
+          setActiveTask({ task_id: task.task_id ?? taskId, title: task.title });
+          setInputVal('');
+          setAttachedFile(null);
+          setFileError('');
+          setRagError('');
+          setIsLoading(false);
+
+          if (refreshHistoryTasks) {
+            refreshHistoryTasks().catch(() => {});
+          }
+
+          if (soundEnabled) playSoundEffect('success');
+        },
+        () => {
+          setRagError(RAG_ERROR_MESSAGE);
+          setIsLoading(false);
+        }
+      );
+    } catch (error) {
+      setRagError(error.response?.data?.message ?? RAG_ERROR_MESSAGE);
       setIsLoading(false);
     }
   };
@@ -608,7 +665,7 @@ export default function ChatWorkspaceView() {
 
   const handleSubmit = () => {
     if (isLoading) return;
-    if (!inputVal.trim()) return;
+    if (!inputVal.trim() && !attachedFile) return;
     if (fileError) return;
 
     const submissionPayload = {
@@ -659,44 +716,70 @@ export default function ChatWorkspaceView() {
     setExpandedId(prev => prev === id ? null : id);
   };
 
-  const toggleDone = (id) => {
-    let isMarkingDone = false;
+  const toggleDone = async (id) => {
+    const activeTaskId = currentTaskId ?? activeTask?.task_id ?? activeTask?.id;
+    const target = subTasks.find((taskItem) => taskItem.id === id);
+    if (!activeTaskId || !target) return;
 
-    setSubTasks(prev =>
-      prev.map((taskItem) => {
-        if (taskItem.id !== id) return taskItem;
+    const nextStatus = target.status === 'done' ? 'next' : 'done';
 
-        const nextStatus = taskItem.status === 'done' ? 'next' : 'done';
-        if (taskItem.status !== 'done' && nextStatus === 'done') isMarkingDone = true;
+    try {
+      const updated = await taskService.updateSubTask(activeTaskId, id, nextStatus);
 
-        return { ...taskItem, status: nextStatus };
-      })
-    );
+      setSubTasks(prev =>
+        prev.map((taskItem) => (
+          taskItem.id === id
+            ? { ...taskItem, status: updated.status ?? nextStatus }
+            : taskItem
+        ))
+      );
 
-    /* UI/UX Fix: Step 6 — Output device speaker (sound feedback) untuk positive reinforcement. Micro-animations memberikan reward psikologis, mendukung habit loop. 47,5% user bekerja larut malam — dopamine hit kecil membantu. */
-    if (isMarkingDone && soundEnabled) {
-      playSoundEffect('chime');
-    }
+      const isMarkingDone = nextStatus === 'done';
+      if (isMarkingDone && soundEnabled) {
+        playSoundEffect('chime');
+      }
 
-    if (isMarkingDone) {
-      setJustCompletedTaskIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
+      if (isMarkingDone) {
+        setJustCompletedTaskIds((prev) => (prev.includes(id) ? prev : [...prev, id]));
 
-      const timerId = setTimeout(() => {
-        setJustCompletedTaskIds((prev) => prev.filter((taskId) => taskId !== id));
-      }, 520);
-      completionAnimationTimersRef.current.push(timerId);
+        const timerId = setTimeout(() => {
+          setJustCompletedTaskIds((prev) => prev.filter((taskId) => taskId !== id));
+        }, 520);
+        completionAnimationTimersRef.current.push(timerId);
+      }
+    } catch {
+      showToast('Gagal memperbarui status sub-task. Coba lagi.', 'error');
     }
   };
 
-  const handleFollowUp = () => {
-    if (!followUpVal.trim()) return;
-    setFollowUpReply('');
-    setTimeout(() => {
-      setFollowUpReply(
-        `Untuk subtask "${subTasks.find(t => t.id === expandedId)?.title ?? 'ini'}", aku sarankan mulai dengan Perplexity AI - masukkan kata kunci jurusan kamu dan minta ia menganalisis tren topik 2024-2025. Ini jauh lebih efisien dibandingkan browsing manual di Google Scholar.`
-      );
-      setFollowUpVal('');
-    }, 1200);
+  const handleFollowUp = async () => {
+    const message = followUpVal.trim();
+    if (!message) return;
+
+    const activeTaskId = currentTaskId ?? activeTask?.task_id ?? activeTask?.id;
+    const userMessage = {
+      id: `${Date.now()}-user`,
+      role: 'user',
+      text: message,
+    };
+
+    setFollowUpMessages((prev) => [...prev, userMessage]);
+    setFollowUpVal('');
+
+    try {
+      const response = await chatService.send(message, activeTaskId ?? null);
+      const assistantMessage = {
+        id: `${Date.now()}-assistant`,
+        role: 'assistant',
+        text: response.reply ?? 'Maaf, Leva belum bisa menjawab saat ini.',
+        tools: Array.isArray(response.recommended_tools) ? response.recommended_tools : [],
+      };
+
+      setFollowUpMessages((prev) => [...prev, assistantMessage]);
+    } catch (error) {
+      const messageText = error.response?.data?.message ?? 'Maaf, chat gagal dikirim. Coba lagi ya.';
+      showToast(messageText, 'error');
+    }
   };
 
   const autoResizeFollowUpTextarea = (textareaEl) => {
@@ -713,10 +796,45 @@ export default function ChatWorkspaceView() {
 
   const expandedTask  = subTasks.find(t => t.id === expandedId) ?? null;
   const hasResults    = subTasks.length > 0;
-  const canSendMessage = inputVal.trim().length > 0;
+  const canSendMessage = inputVal.trim().length > 0 || Boolean(attachedFile);
   const processingMessage = getProcessingMessage(loadingElapsedSeconds);
   const rightPanelOpen = !!expandedTask;
-  const savedToolNames = new Set(savedTools.map((tool) => tool.name.toLowerCase()));
+  const savedToolIds = new Set(
+    savedTools
+      .map((tool) => tool?.tool?.id ?? tool?.tool_id ?? tool?.id)
+      .filter(Boolean)
+  );
+  const savedToolNames = new Set(
+    savedTools
+      .map((tool) => (tool?.tool?.name ?? tool?.name ?? '').toLowerCase())
+      .filter(Boolean)
+  );
+
+  const isToolSaved = (tool) => {
+    if (!tool) return false;
+    if (tool.id && savedToolIds.has(tool.id)) return true;
+    if (tool.name) return savedToolNames.has(tool.name.toLowerCase());
+    return false;
+  };
+
+  const handleSaveTool = async (tool) => {
+    if (!tool?.id) return;
+    if (isToolSaved(tool)) {
+      showToast('Tool sudah ada di Library.', 'info');
+      return;
+    }
+
+    try {
+      await bookmarkService.create(tool.id);
+      showToast('AI sedang men-tag tool... cek di Library beberapa detik lagi', 'success');
+      if (refreshSavedTools) {
+        refreshSavedTools().catch(() => {});
+      }
+    } catch (error) {
+      const messageText = error.response?.data?.message ?? 'Gagal menyimpan tool. Coba lagi.';
+      showToast(messageText, 'error');
+    }
+  };
 
   const handleCopyTips = async (task) => {
     try {
@@ -739,7 +857,7 @@ export default function ChatWorkspaceView() {
   const progressPct    = subTasks.length ? Math.round((completedCount / subTasks.length) * 100) : 0;
   const allTasksDone = subTasks.length > 0 && completedCount === subTasks.length;
   const quickPromptChips = useMemo(() => {
-    const normalizedJurusan = jurusan.trim().toLowerCase();
+    const normalizedJurusan = (jurusan ?? '').trim().toLowerCase();
 
     /* UI/UX Fix: Step 6 — Keyboard shortcuts minimalisir pergerakan tangan (47,5% user larut malam). Step 7 — Disabled state = "work the way it looks". Quick prompts kontekstual mengurangi 35,6% keluhan AI terlalu generik. */
     if (normalizedJurusan.includes('teknik informatika')) return QUICK_PROMPTS_BY_JURUSAN.teknikInformatika;
@@ -794,7 +912,7 @@ export default function ChatWorkspaceView() {
         <div style={{ flex: 1, padding: hasResults ? '28px 32px' : '0', display: 'flex', flexDirection: 'column' }}>
 
           {/* -- EMPTY STATE */}
-          {!hasResults && (
+          {!hasResults && !isLoadingHistory && (
             <div style={{
               flex: 1, display: 'flex', flexDirection: 'column',
               alignItems: 'center', justifyContent: 'center',
@@ -814,7 +932,7 @@ export default function ChatWorkspaceView() {
                 <input
                   ref={fileInputRef}
                   type="file"
-                  accept=".pdf,.txt"
+                  accept=".pdf"
                   onChange={handleAttachmentInput}
                   style={{ display: 'none' }}
                 />
@@ -1007,6 +1125,22 @@ export default function ChatWorkspaceView() {
           )}
 
           {/* -- RESULTS */}
+          {isLoadingHistory && !hasResults && (
+            <div style={{
+              flex: 1,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '40px 20px',
+              minHeight: 'calc(100vh - 100px)',
+            }}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
+                <AppIcon name="loader" size={28} className="send-spinner" />
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>Memuat detail task...</p>
+              </div>
+            </div>
+          )}
+
           {hasResults && !isLoading && (
             <>
               {/* Task Title Card */}
@@ -1036,7 +1170,6 @@ export default function ChatWorkspaceView() {
                   isExpanded={expandedId === task.id}
                   onToggle={() => toggleExpand(task.id)}
                   onMarkDone={toggleDone}
-                  onSaveTool={saveToolToLibrary}
                   isDoneJustNow={justCompletedTaskIds.includes(task.id)}
                 />
               ))}
@@ -1056,14 +1189,48 @@ export default function ChatWorkspaceView() {
 
               {/* Follow-up Input */}
               <div style={{ marginTop: 20, padding: '16px 20px', background: 'var(--color-surface)', borderRadius: 14, border: '1px solid var(--color-border)' }}>
-                {followUpReply && (
-                  <div style={{ display: 'flex', gap: 10, marginBottom: 14 }}>
-                    <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, flexShrink: 0 }}><AppIcon name="sparkles" size={12} color="#fff" /></div>
-                    <div style={{ background: 'var(--color-primary-light)', borderRadius: 12, padding: '12px 14px', fontSize: 13, lineHeight: 1.65, color: 'var(--color-text-primary)', flex: 1 }}>
-                      {followUpReply}
+                {followUpMessages.map((msg) => (
+                  <div key={msg.id} style={{ display: 'flex', gap: 10, marginBottom: 12, justifyContent: msg.role === 'user' ? 'flex-end' : 'flex-start' }}>
+                    {msg.role === 'assistant' && (
+                      <div style={{ width: 30, height: 30, borderRadius: '50%', background: 'var(--color-primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontSize: 12, flexShrink: 0 }}><AppIcon name="sparkles" size={12} color="#fff" /></div>
+                    )}
+                    <div style={{
+                      background: msg.role === 'assistant' ? 'var(--color-primary-light)' : 'var(--color-bg)',
+                      borderRadius: 12,
+                      padding: '12px 14px',
+                      fontSize: 13,
+                      lineHeight: 1.65,
+                      color: 'var(--color-text-primary)',
+                      maxWidth: '75%',
+                    }}>
+                      {msg.text}
+                      {msg.role === 'assistant' && msg.tools?.length > 0 && (
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 10 }}>
+                          {msg.tools.map((tool) => (
+                            <button
+                              key={tool.id}
+                              type="button"
+                              disabled={isToolSaved(tool)}
+                              onClick={() => handleSaveTool(tool)}
+                              style={{
+                                border: '1px solid var(--color-border)',
+                                background: isToolSaved(tool) ? '#E2E8F0' : '#fff',
+                                color: isToolSaved(tool) ? '#64748B' : 'var(--color-text-primary)',
+                                borderRadius: 999,
+                                padding: '4px 10px',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                cursor: isToolSaved(tool) ? 'not-allowed' : 'pointer',
+                              }}
+                            >
+                              {isToolSaved(tool) ? 'Tersimpan' : 'Simpan'} · {tool.name}
+                            </button>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
+                ))}
                 <div style={{ display: 'flex', gap: 10, alignItems: 'flex-end' }}>
                   <textarea
                     ref={followUpTextareaRef}
@@ -1105,8 +1272,8 @@ export default function ChatWorkspaceView() {
       <RightPanel
         task={expandedTask}
         isOpen={rightPanelOpen}
-        onSave={saveToolToLibrary}
-        savedToolNames={savedToolNames}
+        onSave={handleSaveTool}
+        isToolSaved={isToolSaved}
         onCopyTips={handleCopyTips}
         copiedTipsTaskId={copiedTipsTaskId}
       />

@@ -1,11 +1,14 @@
-import { createContext, useContext, useState } from 'react';
-import { historyTasks as mockHistoryTasks, mockSavedTools } from '../data/mockData';
+import { createContext, useContext, useEffect, useState } from 'react';
+import { authService } from '../services/authService';
+import { bookmarkService } from '../services/bookmarkService';
+import { taskService } from '../services/taskService';
 
 const AppContext = createContext(null);
 
 export function AppProvider({ children }) {
   // User persona from onboarding
   const [user, setUser] = useState(null); // null = not onboarded yet
+  const [token, setToken] = useState(() => localStorage.getItem('leva_token'));
 
   // Active view: 'onboarding' | 'dashboard' | 'chat' | 'library' | 'profile'
   const [activeView, setActiveViewState] = useState('onboarding');
@@ -18,16 +21,43 @@ export function AppProvider({ children }) {
   const [activeTask, setActiveTask] = useState(null);
 
   // Saved tools library
-  const [savedTools, setSavedTools] = useState(mockSavedTools);
+  const [savedTools, setSavedTools] = useState([]);
 
   // Task history in sidebar
-  const [historyTasks, setHistoryTasks] = useState(mockHistoryTasks);
+  const [historyTasks, setHistoryTasks] = useState([]);
 
   // Toast notification
   const [toasts, setToasts] = useState([]);
 
   // UX sound effect preference
   const [soundEnabled, setSoundEnabled] = useState(true);
+
+  useEffect(() => {
+    if (!token) return;
+
+    let isMounted = true;
+
+    const bootstrap = async () => {
+      try {
+        const me = await authService.me();
+        if (!isMounted) return;
+        setUser(me);
+        setActiveViewState('dashboard');
+      } catch (error) {
+        localStorage.removeItem('leva_token');
+        if (!isMounted) return;
+        setToken(null);
+        setUser(null);
+        setActiveViewState('onboarding');
+      }
+    };
+
+    bootstrap();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
 
   const showToast = (message, type = 'info') => {
     const normalizedType = String(type || 'info').toLowerCase();
@@ -41,6 +71,18 @@ export function AppProvider({ children }) {
 
   const dismissToast = (toastId) => {
     setToasts((prev) => prev.filter((toastItem) => toastItem.id !== toastId));
+  };
+
+  const refreshSavedTools = async (params = {}) => {
+    const data = await bookmarkService.list(params);
+    setSavedTools(data.bookmarks ?? []);
+    return data;
+  };
+
+  const refreshHistoryTasks = async (params = {}) => {
+    const data = await taskService.list(params);
+    setHistoryTasks(data.tasks ?? []);
+    return data;
   };
 
   const setActiveView = (nextView, options = {}) => {
@@ -106,6 +148,8 @@ export function AppProvider({ children }) {
       value={{
         user,
         setUser,
+        token,
+        setToken,
         activeView,
         setActiveView,
         setActiveViewState,
@@ -117,8 +161,10 @@ export function AppProvider({ children }) {
         setActiveTask,
         savedTools,
         setSavedTools,
+        refreshSavedTools,
         historyTasks,
         setHistoryTasks,
+        refreshHistoryTasks,
         toasts,
         showToast,
         dismissToast,

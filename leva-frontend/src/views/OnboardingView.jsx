@@ -1,6 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
 import AppIcon from '../components/AppIcon';
+import Modal from '../components/Modal';
+import { authService } from '../services/authService';
+import { profileService } from '../services/profileService';
+import { mapOnboardingToApi } from '../utils/fieldMapper';
 import { playSoundEffect } from '../utils/sound';
 
 const JURUSAN_OPTIONS = [
@@ -25,18 +29,60 @@ const JURUSAN_OPTIONS = [
 ];
 
 const SEMESTER_OPTIONS = Array.from({ length: 8 }, (_, i) => `${i + 1}`);
+const LEARNING_STYLE_OPTIONS = [
+  {
+    key: 'visual',
+    label: 'Visual',
+    description: 'Lebih nyaman belajar lewat gambar, diagram, atau warna.',
+    icon: 'news',
+  },
+  {
+    key: 'auditory',
+    label: 'Auditori',
+    description: 'Lebih mudah paham lewat diskusi, audio, atau penjelasan lisan.',
+    icon: 'message',
+  },
+  {
+    key: 'kinesthetic',
+    label: 'Kinestetik',
+    description: 'Paham lewat praktik langsung dan latihan aktif.',
+    icon: 'flame',
+  },
+];
+
+const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 export default function OnboardingView() {
   const { setUser, setActiveView, showToast, soundEnabled } = useApp();
   const [step, setStep] = useState(1);
-  const [form, setForm] = useState({ name: '', jurusan: '', semester: '', bahasa: 'Indonesia' });
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    passwordConfirm: '',
+    jurusan: '',
+    semester: '',
+    bahasa: 'Indonesia',
+    learning_style: 'visual',
+  });
   const [errors, setErrors] = useState({});
   const [stepAnimationClass, setStepAnimationClass] = useState('');
   const [showStep3Confetti, setShowStep3Confetti] = useState(false);
   const [jurusanQuery, setJurusanQuery] = useState('');
   const [isJurusanOpen, setIsJurusanOpen] = useState(false);
   const [jurusanHighlightIndex, setJurusanHighlightIndex] = useState(-1);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [loginForm, setLoginForm] = useState({ email: '', password: '' });
+  const [loginErrors, setLoginErrors] = useState({});
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
   const nameInputRef = useRef(null);
+  const emailInputRef = useRef(null);
+  const passwordInputRef = useRef(null);
+  const passwordConfirmInputRef = useRef(null);
   const jurusanBoxRef = useRef(null);
   const jurusanInputRef = useRef(null);
   const semesterChipRefs = useRef([]);
@@ -95,7 +141,7 @@ export default function OnboardingView() {
   }, [stepAnimationClass]);
 
   useEffect(() => {
-    if (step !== 3) {
+    if (step !== 4) {
       setShowStep3Confetti(false);
       return;
     }
@@ -226,9 +272,46 @@ export default function OnboardingView() {
   };
 
   const validateStep1 = () => {
+    const nextErrors = {};
+
     if (!form.name.trim()) {
-      setErrors((prev) => ({ ...prev, name: 'Nama tidak boleh kosong. Silakan isi nama lengkapmu untuk melanjutkan.' }));
+      nextErrors.name = 'Nama tidak boleh kosong. Silakan isi nama lengkapmu untuk melanjutkan.';
+    }
+
+    if (!form.email.trim()) {
+      nextErrors.email = 'Email wajib diisi.';
+    } else if (!EMAIL_REGEX.test(form.email.trim())) {
+      nextErrors.email = 'Format email tidak valid.';
+    }
+
+    if (!form.password) {
+      nextErrors.password = 'Password wajib diisi.';
+    } else if (form.password.length < 8) {
+      nextErrors.password = 'Password minimal 8 karakter.';
+    }
+
+    if (!form.passwordConfirm) {
+      nextErrors.passwordConfirm = 'Konfirmasi password wajib diisi.';
+    } else if (form.passwordConfirm !== form.password) {
+      nextErrors.passwordConfirm = 'Konfirmasi password tidak sama.';
+    }
+
+    setErrors(nextErrors);
+
+    if (nextErrors.name) {
       nameInputRef.current?.focus();
+      return false;
+    }
+    if (nextErrors.email) {
+      emailInputRef.current?.focus();
+      return false;
+    }
+    if (nextErrors.password) {
+      passwordInputRef.current?.focus();
+      return false;
+    }
+    if (nextErrors.passwordConfirm) {
+      passwordConfirmInputRef.current?.focus();
       return false;
     }
 
@@ -243,6 +326,15 @@ export default function OnboardingView() {
     return true;
   };
 
+  const validateStep3 = () => {
+    if (!form.learning_style) {
+      setErrors((prev) => ({ ...prev, learning_style: 'Silakan pilih gaya belajar yang paling cocok.' }));
+      return false;
+    }
+
+    return true;
+  };
+
   const handleNext = () => {
     if (step === 1 && validateStep1()) {
       setStepAnimationClass('onboarding-slide-next');
@@ -252,6 +344,11 @@ export default function OnboardingView() {
     if (step === 2 && validateStep2()) {
       setStepAnimationClass('onboarding-slide-next');
       setStep(3);
+    }
+
+    if (step === 3 && validateStep3()) {
+      setStepAnimationClass('onboarding-slide-next');
+      setStep(4);
     }
   };
 
@@ -264,9 +361,69 @@ export default function OnboardingView() {
     showToast('Fitur Google Sign-In segera hadir!', 'info');
   };
 
-  const handleStart = () => {
-    setUser(form);
-    setActiveView('dashboard');
+  const handleStart = async () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
+
+    try {
+      await authService.register(form.name, form.email, form.password);
+      const user = await authService.login(form.email, form.password);
+
+      if (user.status === 'PENDING') {
+        await profileService.create(mapOnboardingToApi(form));
+      }
+
+      const fullUser = await authService.me();
+      setUser(fullUser);
+      setActiveView('dashboard');
+      showToast('Selamat datang di Leva!', 'success');
+    } catch (error) {
+      const msg = error.response?.data?.message ?? 'Pendaftaran gagal. Coba lagi.';
+      showToast(msg, 'error');
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const openLoginModal = () => {
+    setLoginErrors({});
+    setShowLoginModal(true);
+  };
+
+  const closeLoginModal = () => {
+    if (isLoginSubmitting) return;
+    setShowLoginModal(false);
+  };
+
+  const handleLogin = async (event) => {
+    event.preventDefault();
+
+    const nextErrors = {};
+    if (!loginForm.email.trim()) {
+      nextErrors.email = 'Email wajib diisi.';
+    }
+    if (!loginForm.password) {
+      nextErrors.password = 'Password wajib diisi.';
+    }
+
+    setLoginErrors(nextErrors);
+    if (Object.keys(nextErrors).length > 0) return;
+
+    setIsLoginSubmitting(true);
+
+    try {
+      await authService.login(loginForm.email, loginForm.password);
+      const me = await authService.me();
+      setUser(me);
+      setActiveView('dashboard');
+      setShowLoginModal(false);
+      showToast('Selamat datang kembali!', 'success');
+    } catch (error) {
+      const msg = error.response?.data?.message ?? 'Login gagal. Periksa email dan password.';
+      showToast(msg, 'error');
+    } finally {
+      setIsLoginSubmitting(false);
+    }
   };
 
   // -- Shared input style
@@ -291,12 +448,19 @@ export default function OnboardingView() {
     )
     : null;
 
-  const isStep1Complete = form.name.trim().length > 0;
+  const isStep1Complete = Boolean(
+    form.name.trim()
+    && form.email.trim()
+    && form.password
+    && form.passwordConfirm
+  );
   const isStep2Complete = Boolean(form.jurusan && form.semester);
+  const isStep3Complete = Boolean(form.learning_style);
   const STEP_DOT_TOOLTIP = {
     1: '1. Nama',
     2: '2. Info Akademik',
-    3: '3. Konfirmasi',
+    3: '3. Gaya Belajar',
+    4: '4. Konfirmasi',
   };
 
   return (
@@ -307,7 +471,7 @@ export default function OnboardingView() {
     }}>
       <div className="card" style={{ width: '100%', maxWidth: 460, padding: 36, position: 'relative', overflow: 'hidden' }}>
 
-        {step === 3 && showStep3Confetti && (
+        {step === 4 && showStep3Confetti && (
           <div className="onboarding-confetti-layer" aria-hidden="true">
             {step3ConfettiPieces.map((piece) => (
               <span
@@ -342,7 +506,7 @@ export default function OnboardingView() {
 
         {/* Step Dots */}
         <div style={{ display: 'flex', justifyContent: 'center', gap: 8, marginBottom: 28 }}>
-          {[1, 2, 3].map(s => (
+          {[1, 2, 3, 4].map(s => (
             <span
               key={s}
               className={`tooltip-host ${s === step ? 'tooltip-active' : ''}`}
@@ -392,6 +556,95 @@ export default function OnboardingView() {
               }}
             />
             {errText('name')}
+
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', display: 'block', margin: '14px 0 6px' }}>
+              Email aktif
+            </label>
+            <input
+              ref={emailInputRef}
+              autoComplete="email"
+              value={form.email}
+              onChange={e => update('email', e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleNext()}
+              placeholder="nama@email.com"
+              aria-invalid={!!errors.email}
+              style={inputStyle(!!errors.email)}
+            />
+            {errText('email')}
+
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', display: 'block', margin: '14px 0 6px' }}>
+              Password
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                ref={passwordInputRef}
+                autoComplete="new-password"
+                type={showPassword ? 'text' : 'password'}
+                value={form.password}
+                onChange={e => update('password', e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleNext()}
+                placeholder="Minimal 8 karakter"
+                aria-invalid={!!errors.password}
+                style={{ ...inputStyle(!!errors.password), paddingRight: 50 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                style={{
+                  position: 'absolute',
+                  right: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--color-text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {showPassword ? 'Sembunyikan' : 'Lihat'}
+              </button>
+            </div>
+            {errText('password')}
+
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', display: 'block', margin: '14px 0 6px' }}>
+              Konfirmasi password
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                ref={passwordConfirmInputRef}
+                autoComplete="new-password"
+                type={showPasswordConfirm ? 'text' : 'password'}
+                value={form.passwordConfirm}
+                onChange={e => update('passwordConfirm', e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleNext()}
+                placeholder="Ulangi password"
+                aria-invalid={!!errors.passwordConfirm}
+                style={{ ...inputStyle(!!errors.passwordConfirm), paddingRight: 50 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPasswordConfirm((prev) => !prev)}
+                aria-label={showPasswordConfirm ? 'Sembunyikan password' : 'Tampilkan password'}
+                style={{
+                  position: 'absolute',
+                  right: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--color-text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {showPasswordConfirm ? 'Sembunyikan' : 'Lihat'}
+              </button>
+            </div>
+            {errText('passwordConfirm')}
 
             <button
               className="btn-primary"
@@ -446,6 +699,24 @@ export default function OnboardingView() {
             >
               <AppIcon name="google" size={14} /> Atau lanjutkan dengan Google
             </button>
+
+            <div style={{ marginTop: 16, textAlign: 'center', fontSize: 13, color: 'var(--color-text-secondary)' }}>
+              Sudah punya akun?{' '}
+              <button
+                type="button"
+                onClick={openLoginModal}
+                style={{
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--color-primary)',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  padding: 0,
+                }}
+              >
+                Login
+              </button>
+            </div>
           </div>
         )}
 
@@ -679,6 +950,85 @@ export default function OnboardingView() {
 
         {/* --- STEP 3 --- */}
         {step === 3 && (
+          <div>
+            <h2 style={{ margin: '0 0 6px', fontSize: 22, fontWeight: 700 }}>Gaya Belajar Favoritmu</h2>
+            <p style={{ margin: '0 0 22px', fontSize: 14, color: 'var(--color-text-secondary)' }}>
+              Pilih gaya belajar yang paling sering kamu gunakan agar rekomendasi Leva lebih tepat.
+            </p>
+
+            <div role="radiogroup" aria-label="Pilih gaya belajar" style={{ display: 'grid', gap: 12 }}>
+              {LEARNING_STYLE_OPTIONS.map((option) => {
+                const isSelected = form.learning_style === option.key;
+                return (
+                  <button
+                    key={option.key}
+                    type="button"
+                    role="radio"
+                    aria-checked={isSelected}
+                    onClick={() => update('learning_style', option.key)}
+                    style={{
+                      display: 'flex',
+                      gap: 12,
+                      alignItems: 'flex-start',
+                      textAlign: 'left',
+                      padding: '12px 14px',
+                      borderRadius: 12,
+                      border: `1.5px solid ${isSelected ? 'var(--color-primary)' : 'var(--color-border)'}`,
+                      background: isSelected ? 'var(--color-primary-light)' : '#fff',
+                      cursor: 'pointer',
+                    }}
+                  >
+                    <span style={{
+                      width: 36,
+                      height: 36,
+                      borderRadius: 10,
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: isSelected ? 'var(--color-primary)' : 'var(--color-bg)',
+                      color: isSelected ? '#fff' : 'var(--color-text-secondary)',
+                      flexShrink: 0,
+                    }}>
+                      <AppIcon name={option.icon} size={18} color={isSelected ? '#fff' : 'var(--color-text-secondary)'} />
+                    </span>
+                    <span>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>{option.label}</div>
+                      <div style={{ fontSize: 12, color: 'var(--color-text-secondary)', marginTop: 4 }}>{option.description}</div>
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            {errText('learning_style')}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 24 }}>
+              <button className="btn-ghost" onClick={() => goToPreviousStep(2)} style={{ flex: 1, padding: '13px' }}>
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  <AppIcon name="arrow-left" size={14} /> Kembali
+                </span>
+              </button>
+              <button
+                className="btn-primary"
+                onClick={handleNext}
+                aria-disabled={!isStep3Complete}
+                style={{
+                  flex: 2,
+                  padding: '13px',
+                  fontSize: 15,
+                  opacity: isStep3Complete ? 1 : 0.6,
+                  cursor: isStep3Complete ? 'pointer' : 'not-allowed',
+                }}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  Lanjut <AppIcon name="arrow-right" size={14} color="#fff" />
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* --- STEP 4 --- */}
+        {step === 4 && (
           <div style={{ textAlign: 'center' }}>
             <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 16 }}><AppIcon name="graduation-cap" size={56} /></div>
             <h2 style={{ margin: '0 0 12px', fontSize: 22, fontWeight: 700, lineHeight: 1.35 }}>
@@ -696,9 +1046,11 @@ export default function OnboardingView() {
             }}>
               {[
                 { label: 'Nama',    val: form.name },
+                { label: 'Email',   val: form.email },
                 { label: 'Jurusan', val: form.jurusan },
                 { label: 'Semester',val: `Semester ${form.semester}` },
                 { label: 'Bahasa',  val: form.bahasa },
+                { label: 'Gaya Belajar', val: LEARNING_STYLE_OPTIONS.find((item) => item.key === form.learning_style)?.label ?? form.learning_style },
               ].map(row => (
                 <div key={row.label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, padding: '5px 0', borderBottom: '1px solid rgba(108,99,255,0.15)' }}>
                   <span style={{ color: 'var(--color-text-secondary)' }}>{row.label}</span>
@@ -713,21 +1065,36 @@ export default function OnboardingView() {
 
             <button
               onClick={handleStart}
+              disabled={isSubmitting}
               style={{
                 width: '100%', padding: '14px', borderRadius: 12, border: 'none',
                 background: 'var(--color-secondary)', color: '#fff',
-                fontSize: 16, fontWeight: 700, cursor: 'pointer',
+                fontSize: 16, fontWeight: 700, cursor: isSubmitting ? 'not-allowed' : 'pointer',
                 transition: 'all 0.2s',
+                opacity: isSubmitting ? 0.7 : 1,
               }}
-              onMouseEnter={e => e.currentTarget.style.background = '#059669'}
-              onMouseLeave={e => e.currentTarget.style.background = 'var(--color-secondary)'}
+              onMouseEnter={e => {
+                if (!isSubmitting) e.currentTarget.style.background = '#059669';
+              }}
+              onMouseLeave={e => {
+                if (!isSubmitting) e.currentTarget.style.background = 'var(--color-secondary)';
+              }}
             >
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                Masuk ke Dashboard <AppIcon name="arrow-right" size={14} color="#fff" />
+                {isSubmitting ? (
+                  <>
+                    <AppIcon name="loader" size={16} color="#fff" className="animate-spin" />
+                    Memproses...
+                  </>
+                ) : (
+                  <>
+                    Masuk ke Dashboard <AppIcon name="arrow-right" size={14} color="#fff" />
+                  </>
+                )}
               </span>
             </button>
 
-            <button className="btn-ghost" onClick={() => goToPreviousStep(2)} style={{ width: '100%', marginTop: 10 }}>
+            <button className="btn-ghost" onClick={() => goToPreviousStep(3)} style={{ width: '100%', marginTop: 10 }}>
               <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                 <AppIcon name="arrow-left" size={14} /> Edit Data
               </span>
@@ -736,6 +1103,111 @@ export default function OnboardingView() {
         )}
         </div>
       </div>
+
+      {showLoginModal && (
+        <Modal title="Masuk ke Leva" onClose={closeLoginModal}>
+          <form onSubmit={handleLogin}>
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', display: 'block', marginBottom: 6 }}>
+              Email
+            </label>
+            <input
+              autoComplete="email"
+              value={loginForm.email}
+              onChange={(event) => {
+                setLoginForm((prev) => ({ ...prev, email: event.target.value }));
+                setLoginErrors((prev) => ({ ...prev, email: '' }));
+              }}
+              placeholder="nama@email.com"
+              aria-invalid={!!loginErrors.email}
+              style={inputStyle(!!loginErrors.email)}
+            />
+            {loginErrors.email && (
+              <p className="field-error-message" role="alert">
+                <span style={{ display: 'inline-flex', alignItems: 'center', marginTop: 1 }}>
+                  <AppIcon name="warning" size={12} color="#DC2626" />
+                </span>
+                <span>{loginErrors.email}</span>
+              </p>
+            )}
+
+            <label style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-text-primary)', display: 'block', margin: '14px 0 6px' }}>
+              Password
+            </label>
+            <div style={{ position: 'relative' }}>
+              <input
+                autoComplete="current-password"
+                type={showLoginPassword ? 'text' : 'password'}
+                value={loginForm.password}
+                onChange={(event) => {
+                  setLoginForm((prev) => ({ ...prev, password: event.target.value }));
+                  setLoginErrors((prev) => ({ ...prev, password: '' }));
+                }}
+                placeholder="Masukkan password"
+                aria-invalid={!!loginErrors.password}
+                style={{ ...inputStyle(!!loginErrors.password), paddingRight: 50 }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowLoginPassword((prev) => !prev)}
+                aria-label={showLoginPassword ? 'Sembunyikan password' : 'Tampilkan password'}
+                style={{
+                  position: 'absolute',
+                  right: 10,
+                  top: '50%',
+                  transform: 'translateY(-50%)',
+                  border: 'none',
+                  background: 'transparent',
+                  color: 'var(--color-text-secondary)',
+                  cursor: 'pointer',
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {showLoginPassword ? 'Sembunyikan' : 'Lihat'}
+              </button>
+            </div>
+            {loginErrors.password && (
+              <p className="field-error-message" role="alert">
+                <span style={{ display: 'inline-flex', alignItems: 'center', marginTop: 1 }}>
+                  <AppIcon name="warning" size={12} color="#DC2626" />
+                </span>
+                <span>{loginErrors.password}</span>
+              </p>
+            )}
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 22 }}>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={closeLoginModal}
+                style={{ flex: 1 }}
+                disabled={isLoginSubmitting}
+              >
+                Batal
+              </button>
+              <button
+                type="submit"
+                className="btn-primary"
+                disabled={isLoginSubmitting}
+                style={{ flex: 2, opacity: isLoginSubmitting ? 0.7 : 1, cursor: isLoginSubmitting ? 'not-allowed' : 'pointer' }}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {isLoginSubmitting ? (
+                    <>
+                      <AppIcon name="loader" size={16} color="#fff" className="animate-spin" />
+                      Masuk...
+                    </>
+                  ) : (
+                    <>
+                      Login <AppIcon name="arrow-right" size={14} color="#fff" />
+                    </>
+                  )}
+                </span>
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   );
 }

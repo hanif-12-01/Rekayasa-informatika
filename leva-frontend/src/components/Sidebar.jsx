@@ -11,15 +11,34 @@ const NAV_ITEMS = [
 ];
 
 export default function Sidebar() {
-  const { user, activeView, setActiveView, setActiveTask, historyTasks, soundEnabled, setSoundEnabled } = useApp();
+  const {
+    user,
+    activeView,
+    activeTask,
+    setActiveView,
+    setActiveTask,
+    historyTasks,
+    refreshHistoryTasks,
+    soundEnabled,
+    setSoundEnabled,
+  } = useApp();
   const [showSettings, setShowSettings] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [notif, setNotif]       = useState(true);
   const [searchVal, setSearchVal] = useState('');
   const searchInputRef = useRef(null);
 
-  const filteredHistory = historyTasks.filter(t =>
-    t.title.toLowerCase().includes(searchVal.toLowerCase())
+  const activeTaskId = activeTask?.task_id ?? activeTask?.id;
+
+  const formatHistoryDate = (dateString) => {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    if (Number.isNaN(date.getTime())) return '-';
+    return date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short' });
+  };
+
+  const filteredHistory = historyTasks.filter((task) =>
+    (task.title ?? '').toLowerCase().includes(searchVal.toLowerCase())
   );
 
   useEffect(() => {
@@ -40,6 +59,11 @@ export default function Sidebar() {
       window.removeEventListener('leva:escape', handleEscape);
     };
   }, []);
+
+  useEffect(() => {
+    if (!refreshHistoryTasks) return;
+    refreshHistoryTasks().catch(() => {});
+  }, [refreshHistoryTasks]);
 
   const handleHistoryClick = (task) => {
     setActiveTask(task);
@@ -171,9 +195,14 @@ export default function Sidebar() {
           <p style={{ fontSize: 11, fontWeight: 600, color: 'var(--color-sidebar-text-muted)', letterSpacing: '0.08em', marginBottom: 8, paddingLeft: 4 }}>
             RIWAYAT TUGAS
           </p>
-          {filteredHistory.map(task => (
+          {filteredHistory.map(task => {
+            const taskId = task.task_id ?? task.id;
+            const isActive = taskId && taskId === activeTaskId;
+            const dateLabel = formatHistoryDate(task.created_at ?? task.date);
+
+            return (
             <button
-              key={task.id}
+              key={taskId ?? task.title}
               type="button"
               onClick={() => handleHistoryClick(task)}
               style={{
@@ -181,25 +210,26 @@ export default function Sidebar() {
                 border: 'none',
                 textAlign: 'left',
                 padding: '8px 10px', borderRadius: 9, cursor: 'pointer',
-                background: task.isActive ? 'rgba(108,99,255,0.25)' : 'transparent',
+                background: isActive ? 'rgba(108,99,255,0.25)' : 'transparent',
                 marginBottom: 2,
                 transition: 'background 0.2s ease',
               }}
-              onMouseEnter={e => { if (!task.isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
-              onMouseLeave={e => { if (!task.isActive) e.currentTarget.style.background = 'transparent'; }}
+              onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.05)'; }}
+              onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'transparent'; }}
             >
               <p style={{
-                margin: 0, fontSize: 13, fontWeight: task.isActive ? 600 : 400,
-                color: task.isActive ? '#fff' : 'var(--color-sidebar-text)',
+                margin: 0, fontSize: 13, fontWeight: isActive ? 600 : 400,
+                color: isActive ? '#fff' : 'var(--color-sidebar-text)',
                 whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
               }}>
                 {task.title}
               </p>
               <p style={{ margin: 0, fontSize: 11, color: 'var(--color-sidebar-text-muted)', marginTop: 2 }}>
-                {task.date}
+                {dateLabel}
               </p>
             </button>
-          ))}
+          );
+          })}
         </div>
 
         {/* Divider */}

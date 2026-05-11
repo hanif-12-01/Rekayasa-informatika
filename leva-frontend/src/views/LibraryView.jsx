@@ -29,6 +29,13 @@ const INDONESIAN_MONTH_MAP = {
   des: 11,
 };
 
+const PRIORITY_KEY_MAP = {
+  must_try: 'high',
+  very_good: 'good',
+  niche: 'later',
+  optional: 'later',
+};
+
 const pricingMeta = (pricingType) => {
   const map = {
     free: { label: 'Free', bg: '#DCFCE7', color: '#15803D' },
@@ -124,7 +131,7 @@ function SavedToolCard({ tool, onDelete }) {
 
       {/* Keywords */}
       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 14 }}>
-        {tool.keywords.map(kw => (
+        {(tool.keywords ?? []).map(kw => (
           <span
             key={kw}
             style={{ fontSize: 11, padding: '2px 8px', background: 'var(--color-bg)', border: '1px solid var(--color-border)', borderRadius: 6, color: 'var(--color-text-secondary)' }}
@@ -204,8 +211,49 @@ export default function LibraryView() {
     return map;
   }, []);
 
+  const normalizedSavedTools = useMemo(() => savedTools.map((item, index) => {
+    const baseTool = item?.tool ?? item ?? {};
+    const name = baseTool.name ?? item?.name ?? '';
+    const pricingTypeRaw = baseTool.pricing_type ?? baseTool.pricingType ?? item?.pricingType ?? 'freemium';
+    const pricingType = typeof pricingTypeRaw === 'string' ? pricingTypeRaw.toLowerCase() : 'freemium';
+    const utilityPriority = item?.utility_priority;
+    const priorityKey = utilityPriority
+      ? (PRIORITY_KEY_MAP[utilityPriority] ?? 'later')
+      : (item?.priorityKey ?? 'later');
+    const priorityLabel = item?.priority_label ?? item?.priority ?? 'Sangat Bagus';
+    const keywords = Array.isArray(item?.semantic_keywords)
+      ? item.semantic_keywords
+      : (Array.isArray(item?.keywords) ? item.keywords : []);
+
+    const savedAtDate = item?.saved_at ? new Date(item.saved_at) : null;
+    const hasValidDate = savedAtDate && !Number.isNaN(savedAtDate.getTime());
+    const savedAt = hasValidDate
+      ? savedAtDate.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' })
+      : (item?.savedAt ?? '');
+
+    const savedTimestamp = hasValidDate ? savedAtDate.getTime() : item?.savedTimestamp;
+
+    return {
+      id: item?.id ?? baseTool.id ?? `${name}-${index}`,
+      toolId: baseTool.id ?? item?.tool_id ?? item?.id,
+      name,
+      url: baseTool.url ?? item?.url ?? '',
+      category: baseTool.category ?? item?.category ?? 'Research',
+      priority: priorityLabel,
+      priorityKey,
+      pricingType,
+      rating: Number(baseTool.rating ?? item?.rating ?? 0),
+      description: baseTool.description ?? item?.description ?? '',
+      note: item?.note ?? '',
+      keywords,
+      savedAt,
+      savedTimestamp,
+      taggingStatus: item?.tagging_status ?? item?.taggingStatus,
+    };
+  }), [savedTools]);
+
   const filtered = useMemo(() => {
-    const base = savedTools.filter((tool) => {
+    const base = normalizedSavedTools.filter((tool) => {
       const matchPriority = priorityFilter === 'Semua' || tool.priority === priorityFilter;
       const matchCategory = categoryFilter === 'Semua' || tool.category === categoryFilter;
 
@@ -225,8 +273,8 @@ export default function LibraryView() {
     const withMeta = base.map((tool, index) => ({
       ...tool,
       _timestamp: tool.savedTimestamp ?? parseSavedAtToTimestamp(tool.savedAt, 0),
-      _rating: tool.rating ?? ratingByName.get(tool.name.toLowerCase()) ?? 0,
-      pricingType: tool.pricingType ?? pricingByName.get(tool.name.toLowerCase()) ?? 'freemium',
+      _rating: tool.rating ?? ratingByName.get((tool.name ?? '').toLowerCase()) ?? 0,
+      pricingType: tool.pricingType ?? pricingByName.get((tool.name ?? '').toLowerCase()) ?? 'freemium',
     }));
 
     withMeta.sort((a, b) => {
@@ -239,7 +287,7 @@ export default function LibraryView() {
     });
 
     return withMeta;
-  }, [savedTools, priorityFilter, categoryFilter, debouncedSearchVal, sortBy, ratingByName, pricingByName]);
+  }, [normalizedSavedTools, priorityFilter, categoryFilter, debouncedSearchVal, sortBy, ratingByName, pricingByName]);
 
   const handleDeleteRequest = (tool) => {
     /* UI/UX Fix: Step 6 — Output device harus memberi respond jelas ke aksi user. Step 7 — Aksi destruktif (hapus) harus ada safeguard/konfirmasi. Survei: 52,5% user sulit temukan referensi. */
@@ -281,7 +329,7 @@ export default function LibraryView() {
     boxSizing: 'border-box', marginBottom: 12,
   };
 
-  const isLibraryEmpty = savedTools.length === 0;
+  const isLibraryEmpty = normalizedSavedTools.length === 0;
 
   const handleResetFilters = () => {
     setPriorityFilter('Semua');
@@ -331,9 +379,9 @@ export default function LibraryView() {
           {/* Stats row */}
           <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
             {[
-              { label: 'Total Tools', val: savedTools.length, icon: 'folder' },
-              { label: 'Prioritas Tinggi', val: savedTools.filter(t => t.priorityKey === 'high').length, icon: 'flame' },
-              { label: 'Sangat Bagus', val: savedTools.filter(t => t.priorityKey === 'good').length, icon: 'check' },
+              { label: 'Total Tools', val: normalizedSavedTools.length, icon: 'folder' },
+              { label: 'Prioritas Tinggi', val: normalizedSavedTools.filter(t => t.priorityKey === 'high').length, icon: 'flame' },
+              { label: 'Sangat Bagus', val: normalizedSavedTools.filter(t => t.priorityKey === 'good').length, icon: 'check' },
             ].map(stat => (
               <div key={stat.label} className="card" style={{ flex: 1, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ display: 'flex' }}><AppIcon name={stat.icon} size={22} /></span>
@@ -416,7 +464,7 @@ export default function LibraryView() {
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
                 <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0 }}>
-                  Menampilkan <strong>{filtered.length}</strong> dari {savedTools.length} tools
+                  Menampilkan <strong>{filtered.length}</strong> dari {normalizedSavedTools.length} tools
                 </p>
 
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text-secondary)' }}>

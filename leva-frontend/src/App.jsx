@@ -124,7 +124,12 @@ function AppInner() {
   }
 
   if (activeView === 'onboarding') {
-    return <OnboardingView />;
+    return (
+      <>
+        <OnboardingView />
+        {toasts.length > 0 && <Toast toasts={toasts} onClose={dismissToast} />}
+      </>
+    );
   }
 
   return (
