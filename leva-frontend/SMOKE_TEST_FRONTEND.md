@@ -84,3 +84,7 @@ Beberapa bug yang ditemukan selama proses Smoke Test telah diperbaiki:
 * [ ] Setelah refresh, bahasa tetap sesuai preferensi terakhir
 * [ ] PUT `/api/profile` mengirim `language_preference`
 * [ ] Tidak ada enum backend yang berubah karena diterjemahkan
+* [ ] Library bisa dibuka tanpa crash
+* [ ] Filter priority tampil dalam Bahasa Indonesia
+* [ ] Ubah bahasa ke English, filter priority berubah ke English
+* [ ] Console tidak menampilkan `PRIORITY_OPTIONS is not defined`

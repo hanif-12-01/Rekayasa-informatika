@@ -112,6 +112,18 @@ Command frontend yang dijalankan: `npm run build`
 * Cara verifikasi: Buka Profile → ubah ke English → Simpan. Buka Chat & Task → semua label, placeholder, modal, dan toast dalam English. Buka Dashboard → greeting, stats, buttons dalam English. Ubah kembali ke Indonesia → semua kembali.
 * Status: Needs Verification
 
+### BUG-012 — Library crash karena PRIORITY_OPTIONS tidak didefinisikan
+
+* Halaman: Library
+* Gejala: Halaman blank/crash saat dibuka
+* Expected: Library tetap terbuka dan filter priority tampil normal
+* Actual: Console menampilkan `ReferenceError: PRIORITY_OPTIONS is not defined`
+* Penyebab: Saat refactor i18n, constant `PRIORITY_OPTIONS` di-rename menjadi `PRIORITY_KEYS` tetapi satu referensi di JSX (line 603) terlewat dan masih memakai nama lama.
+* File yang diubah: `src/views/LibraryView.jsx`
+* Fix: Mengganti `PRIORITY_OPTIONS.map(...)` menjadi `PRIORITY_KEYS.map(...)` di line 603.
+* Cara verifikasi: Buka Library → halaman tidak crash → filter priority tampil normal → console tidak ada error `PRIORITY_OPTIONS is not defined`.
+* Status: Needs Verification
+
 ## Checklist Verifikasi Manual
 
 * [x] Library menampilkan total tools sesuai jumlah bookmark.

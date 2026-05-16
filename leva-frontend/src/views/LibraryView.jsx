@@ -600,7 +600,7 @@ export default function LibraryView() {
                   ?
                 </span>
               </div>
-              {PRIORITY_OPTIONS.map(option => (
+              {PRIORITY_KEYS.map(option => (
                 <button
                   key={option.value}
                   type="button"
