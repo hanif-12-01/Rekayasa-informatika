@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { bookmarkService } from '../services/bookmarkService';
 import { PRIORITY_LABELS } from '../utils/fieldMapper';
@@ -12,6 +12,17 @@ const PRIORITY_OPTIONS = [
     label: meta.label,
   })),
 ];
+
+const getNormalizedPriorityKey = (utilityPriority, priorityLabel) => {
+  if (utilityPriority) return utilityPriority;
+  if (!priorityLabel) return null;
+  const lowerLabel = priorityLabel.toLowerCase();
+  if (lowerLabel.includes('wajib') || lowerLabel.includes('must')) return 'must_try';
+  if (lowerLabel.includes('sangat') || lowerLabel.includes('very')) return 'very_good';
+  if (lowerLabel.includes('opsional') || lowerLabel.includes('optional')) return 'optional';
+  if (lowerLabel.includes('niche') || lowerLabel.includes('bagus')) return 'niche';
+  return null;
+};
 const CATEGORY_FILTERS = ['Semua', 'Research', 'Writing', 'Coding', 'Data', 'Academic', 'Productivity'];
 const SORT_OPTIONS = [
   { value: 'latest', label: 'Terbaru disimpan' },
@@ -230,6 +241,17 @@ export default function LibraryView() {
   const [errorMessage, setErrorMessage] = useState('');
   const [tags, setTags] = useState([]);
   const [selectedTag, setSelectedTag] = useState('');
+  const requestRef = useRef(0);
+
+  const displayedTags = useMemo(() => {
+    if (tags && tags.length > 0) return tags;
+    const extracted = new Set();
+    bookmarks.forEach(item => {
+      const kw = Array.isArray(item.semantic_keywords) ? item.semantic_keywords : (Array.isArray(item.keywords) ? item.keywords : []);
+      kw.forEach(k => { if (k && typeof k === 'string') extracted.add(k.trim().toLowerCase()); });
+    });
+    return Array.from(extracted);
+  }, [tags, bookmarks]);
 
   useEffect(() => {
     const timeoutId = setTimeout(() => {
@@ -240,6 +262,7 @@ export default function LibraryView() {
   }, [searchVal]);
 
   const fetchBookmarks = useCallback(async () => {
+    const currentRequestId = ++requestRef.current;
     setIsLoading(true);
     setErrorMessage('');
 
@@ -255,20 +278,27 @@ export default function LibraryView() {
         params.q = debouncedSearchVal;
       }
 
-      const data = await bookmarkService.list(params);
-      setBookmarks(data.bookmarks ?? []);
-      setPagination(data.pagination ?? { current_page: 1, total: 0, last_page: 1 });
+      const data = await bookmarkService.getBookmarks(params);
+      
+      if (requestRef.current === currentRequestId) {
+        setBookmarks(data.bookmarks ?? []);
+        setPagination(data.pagination ?? { current_page: 1, total: 0, last_page: 1 });
+      }
     } catch (error) {
-      const message = error.response?.data?.message ?? 'Gagal memuat Library. Coba lagi.';
-      setErrorMessage(message);
+      if (requestRef.current === currentRequestId) {
+        const message = error.response?.data?.message ?? 'Library belum bisa dimuat. Pastikan backend API berjalan.';
+        setErrorMessage(message);
+      }
     } finally {
-      setIsLoading(false);
+      if (requestRef.current === currentRequestId) {
+        setIsLoading(false);
+      }
     }
   }, [priorityFilter, categoryFilter, debouncedSearchVal, sortBy]);
 
   const fetchTags = useCallback(async () => {
     try {
-      const tagList = await bookmarkService.tags();
+      const tagList = await bookmarkService.getTags();
       setTags(Array.isArray(tagList) ? tagList : []);
     } catch {
       setTags([]);
@@ -300,11 +330,12 @@ export default function LibraryView() {
     const name = baseTool.name ?? item?.name ?? '';
     const pricingTypeRaw = baseTool.pricing_type ?? baseTool.pricingType ?? item?.pricingType ?? 'freemium';
     const pricingType = normalizePricingType(pricingTypeRaw);
-    const utilityPriority = item?.utility_priority ?? item?.priorityKey ?? null;
+    const utilityPriorityRaw = item?.utility_priority ?? item?.priorityKey ?? null;
     const priorityLabel = item?.priority_label
-      ?? (utilityPriority ? PRIORITY_LABELS[utilityPriority]?.label : null)
       ?? item?.priority
+      ?? (utilityPriorityRaw ? PRIORITY_LABELS[utilityPriorityRaw]?.label : null)
       ?? 'Menunggu';
+    const utilityPriority = getNormalizedPriorityKey(utilityPriorityRaw, priorityLabel);
     const keywords = Array.isArray(item?.semantic_keywords)
       ? item.semantic_keywords
       : (Array.isArray(item?.keywords) ? item.keywords : []);
@@ -379,7 +410,7 @@ export default function LibraryView() {
 
     try {
       const toolId = toolToDelete.toolId ?? toolToDelete.id;
-      await bookmarkService.delete(toolId);
+      await bookmarkService.deleteBookmark(toolId);
       showToast('Tool berhasil dihapus', 'info');
       setToolToDelete(null);
       fetchBookmarks();
@@ -472,10 +503,10 @@ export default function LibraryView() {
             <AppIcon name="folder" size={44} color="#94A3B8" />
           </div>
           <h3 style={{ margin: '0 0 10px', fontSize: 24, fontWeight: 800, color: 'var(--color-text-primary)' }}>
-            Library-mu masih kosong
+            Belum ada tool yang disimpan.
           </h3>
           <p style={{ margin: '0 0 22px', maxWidth: 520, fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)' }}>
-            Mulai simpan tools dari Dashboard atau Chat &amp; Task untuk membangun koleksimu!
+            Simpan tool dari Dashboard atau Chat untuk melihatnya di sini.
           </p>
           <button className="btn-primary" onClick={() => setActiveView('dashboard')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px' }}>
             Ke Dashboard <AppIcon name="arrow-right" size={14} color="#fff" />
@@ -567,13 +598,13 @@ export default function LibraryView() {
               ))}
 
               <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', letterSpacing: '0.07em', margin: '20px 0 8px' }}>TAG</p>
-              {tags.length === 0 ? (
+              {displayedTags.length === 0 ? (
                 <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: 0 }}>
                   Belum ada tag.
                 </p>
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
-                  {tags.map((tag) => (
+                  {displayedTags.map((tag) => (
                     <button
                       key={tag}
                       type="button"

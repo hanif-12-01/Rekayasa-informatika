@@ -97,7 +97,7 @@ const normalizeSubTask = (subTask) => ({
   recommended_tools: Array.isArray(subTask.recommended_tools) ? subTask.recommended_tools : [],
 });
 
-const RAG_ERROR_MESSAGE = 'Maaf, Leva belum bisa memproses tugasmu saat ini. Coba ulangi atau tulis ulang dengan deskripsi yang lebih spesifik.';
+const RAG_ERROR_MESSAGE = 'Gagal memproses tugas. Coba lagi.';
 
 // --- Subtask Card
 function SubTaskCard({ task, index, isExpanded, onToggle, onMarkDone, isDoneJustNow }) {
@@ -371,6 +371,20 @@ export default function ChatWorkspaceView() {
   const allowExternalLeaveRef = useRef(false);
   const completionAnimationTimersRef = useRef([]);
   const hasCelebratedAllDoneRef = useRef(false);
+  const pollingCleanupRef = useRef(null);
+
+  const clearPolling = () => {
+    if (pollingCleanupRef.current) {
+      pollingCleanupRef.current();
+      pollingCleanupRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => {
+      clearPolling();
+    };
+  }, []);
 
   const completionConfettiPieces = useMemo(
     () => Array.from({ length: 28 }, (_, index) => {
@@ -409,6 +423,7 @@ export default function ChatWorkspaceView() {
     setShowCompletionOverlay(false);
     setShowCompletionConfetti(false);
     setJustCompletedTaskIds([]);
+    clearPolling();
     completionAnimationTimersRef.current.forEach((timerId) => clearTimeout(timerId));
     completionAnimationTimersRef.current = [];
     hasCelebratedAllDoneRef.current = false;
@@ -584,7 +599,8 @@ export default function ChatWorkspaceView() {
 
       setCurrentTaskId(taskId ?? null);
 
-      taskService.pollStatus(
+      clearPolling();
+      pollingCleanupRef.current = taskService.pollStatus(
         taskId,
         async (taskFromPoll) => {
           const task = taskFromPoll ?? await taskService.get(taskId);
@@ -606,13 +622,13 @@ export default function ChatWorkspaceView() {
 
           if (soundEnabled) playSoundEffect('success');
         },
-        () => {
-          setRagError(RAG_ERROR_MESSAGE);
+        (error) => {
+          setRagError(error?.message || RAG_ERROR_MESSAGE);
           setIsLoading(false);
         }
       );
     } catch (error) {
-      setRagError(error.response?.data?.message ?? RAG_ERROR_MESSAGE);
+      setRagError(error.message === 'timeout' ? error.message : 'Gagal mengirim tugas. Pastikan backend API berjalan.');
       setIsLoading(false);
     }
   };

@@ -9,6 +9,8 @@ export function AppProvider({ children }) {
   // User persona from onboarding
   const [user, setUser] = useState(null); // null = not onboarded yet
   const [token, setToken] = useState(() => localStorage.getItem('leva_token'));
+  const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [authError, setAuthError] = useState(null);
 
   // Active view: 'landing' | 'onboarding' | 'dashboard' | 'chat' | 'library' | 'profile'
   const [activeView, setActiveViewState] = useState('landing');
@@ -30,29 +32,66 @@ export function AppProvider({ children }) {
   const [toasts, setToasts] = useState([]);
 
   // UX sound effect preference
-  const [soundEnabled, setSoundEnabled] = useState(true);
+  const [soundEnabled, setSoundEnabled] = useState(() => {
+    try {
+      const prefs = localStorage.getItem('leva_prefs');
+      if (prefs) return JSON.parse(prefs).soundEnabled ?? true;
+    } catch {
+      //
+    }
+    return true;
+  });
+
+  const updateSoundEnabled = (val) => {
+    const newVal = typeof val === 'function' ? val(soundEnabled) : val;
+    setSoundEnabled(newVal);
+    try {
+      const prefs = localStorage.getItem('leva_prefs');
+      const parsed = prefs ? JSON.parse(prefs) : {};
+      parsed.soundEnabled = newVal;
+      localStorage.setItem('leva_prefs', JSON.stringify(parsed));
+      
+      // Emit a toast for visual feedback when manually changed
+      if (typeof val !== 'function') {
+         // showToast will be available but we can't call it here easily due to deps. 
+         // We will call it from ProfileView when toggle happens instead of here.
+      }
+    } catch {
+      //
+    }
+  };
 
   useEffect(() => {
-    if (!token) return;
-
     let isMounted = true;
 
-    const bootstrap = async () => {
+    const bootstrapAuth = async () => {
+      if (!token) {
+        setIsBootstrapping(false);
+        return;
+      }
+      
       try {
         const me = await authService.me();
         if (!isMounted) return;
         setUser(me);
-        setActiveViewState('dashboard');
+        if (me.status === 'ACTIVE') {
+          setActiveViewState('dashboard');
+        } else {
+          setActiveViewState('onboarding');
+        }
       } catch (error) {
         localStorage.removeItem('leva_token');
         if (!isMounted) return;
         setToken(null);
         setUser(null);
-        setActiveViewState('landing');
+        setAuthError(error.message);
+        setActiveViewState('onboarding');
+      } finally {
+        if (isMounted) setIsBootstrapping(false);
       }
     };
 
-    bootstrap();
+    bootstrapAuth();
 
     return () => {
       isMounted = false;
@@ -146,6 +185,8 @@ export function AppProvider({ children }) {
   return (
     <AppContext.Provider
       value={{
+        isBootstrapping,
+        authError,
         user,
         setUser,
         token,
@@ -169,7 +210,7 @@ export function AppProvider({ children }) {
         showToast,
         dismissToast,
         soundEnabled,
-        setSoundEnabled,
+        setSoundEnabled: updateSoundEnabled,
         saveToolToLibrary,
         removeToolFromLibrary,
       }}
