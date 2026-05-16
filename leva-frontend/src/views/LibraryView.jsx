@@ -6,12 +6,20 @@ import { PRIORITY_LABELS } from '../utils/fieldMapper';
 import Modal from '../components/Modal';
 import AppIcon from '../components/AppIcon';
 
-const PRIORITY_OPTIONS = [
-  { value: 'all', label: 'Semua' },
-  ...Object.entries(PRIORITY_LABELS).map(([key, meta]) => ({
-    value: key,
-    label: meta.label,
-  })),
+const PRIORITY_KEYS = [
+  { value: 'all', key: 'library.priorityAll' },
+  { value: 'must_try', key: 'library.priorityMustTry' },
+  { value: 'very_good', key: 'library.priorityVeryGood' },
+  { value: 'niche', key: 'library.priorityNiche' },
+  { value: 'optional', key: 'library.priorityOptional' },
+];
+
+const SORT_KEYS = [
+  { value: 'latest', key: 'library.sortLatest' },
+  { value: 'oldest', key: 'library.sortOldest' },
+  { value: 'rating', key: 'library.sortRating' },
+  { value: 'az', label: 'A-Z' },
+  { value: 'za', label: 'Z-A' },
 ];
 
 const getNormalizedPriorityKey = (utilityPriority, priorityLabel) => {
@@ -24,14 +32,7 @@ const getNormalizedPriorityKey = (utilityPriority, priorityLabel) => {
   if (lowerLabel.includes('niche') || lowerLabel.includes('bagus')) return 'niche';
   return null;
 };
-const CATEGORY_FILTERS = ['Semua', 'Research', 'Writing', 'Coding', 'Data', 'Academic', 'Productivity'];
-const SORT_OPTIONS = [
-  { value: 'latest', label: 'Terbaru disimpan' },
-  { value: 'oldest', label: 'Terlama disimpan' },
-  { value: 'rating', label: 'Rating tertinggi' },
-  { value: 'az', label: 'A-Z' },
-  { value: 'za', label: 'Z-A' },
-];
+const CATEGORY_FILTERS = ['all', 'Research', 'Writing', 'Coding', 'Data', 'Academic', 'Productivity'];
 
 const INDONESIAN_MONTH_MAP = {
   jan: 0,
@@ -230,7 +231,7 @@ export default function LibraryView() {
     t,
   } = useApp();
   const [priorityFilter, setPriorityFilter] = useState('all');
-  const [categoryFilter, setCategoryFilter] = useState('Semua');
+  const [categoryFilter, setCategoryFilter] = useState('all');
   const [searchVal, setSearchVal] = useState('');
   const [debouncedSearchVal, setDebouncedSearchVal] = useState('');
   const [sortBy, setSortBy] = useState('latest');
@@ -281,7 +282,7 @@ export default function LibraryView() {
       if (priorityFilter !== 'all') {
         params.priority = priorityFilter;
       }
-      if (categoryFilter !== 'Semua') {
+      if (categoryFilter !== 'all') {
         params.category = categoryFilter;
       }
       if (debouncedSearchVal) {
@@ -592,7 +593,7 @@ export default function LibraryView() {
                 <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', letterSpacing: '0.07em', margin: 0 }}>{t('library.priority')}</p>
                 <span
                   className="tooltip-host tooltip-help-icon"
-                  data-tooltip="Prioritas ditentukan otomatis berdasarkan frekuensi penggunaan dan rating tool."
+                  data-tooltip={t('library.priorityTooltip')}
                   aria-label="Info prioritas"
                   tabIndex={0}
                 >
@@ -615,11 +616,11 @@ export default function LibraryView() {
                     textAlign: 'left',
                   }}
                 >
-                  {option.label}
+                  {option.key ? t(option.key) : option.label}
                 </button>
               ))}
 
-              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', letterSpacing: '0.07em', margin: '20px 0 8px' }}>KATEGORI</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', letterSpacing: '0.07em', margin: '20px 0 8px' }}>{t('library.category')}</p>
               {CATEGORY_FILTERS.map(f => (
                 <button
                   key={f}
@@ -636,14 +637,14 @@ export default function LibraryView() {
                     textAlign: 'left',
                   }}
                 >
-                  {f}
+                  {f === 'all' ? t('library.categoryAll') : f}
                 </button>
               ))}
 
-              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', letterSpacing: '0.07em', margin: '20px 0 8px' }}>TAG</p>
+              <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', letterSpacing: '0.07em', margin: '20px 0 8px' }}>{t('library.tags')}</p>
               {displayedTags.length === 0 ? (
                 <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: 0 }}>
-                  Belum ada tag.
+                  {t('library.noTags')}
                 </p>
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -673,11 +674,11 @@ export default function LibraryView() {
             <div style={{ flex: 1 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
                 <p style={{ fontSize: 13, color: 'var(--color-text-secondary)', margin: 0 }}>
-                  Menampilkan <strong>{filtered.length}</strong> dari {totalCount} tools
+                  {t('library.showingXofY').replace('{x}', filtered.length).replace('{y}', totalCount)}
                 </p>
 
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--color-text-secondary)' }}>
-                  <span style={{ fontWeight: 600 }}>Urutkan:</span>
+                  <span style={{ fontWeight: 600 }}>{t('library.sort')}</span>
                   <select
                     value={sortBy}
                     onChange={(event) => setSortBy(event.target.value)}
@@ -691,8 +692,8 @@ export default function LibraryView() {
                       outline: 'none',
                     }}
                   >
-                    {SORT_OPTIONS.map((option) => (
-                      <option key={option.value} value={option.value}>{option.label}</option>
+                    {SORT_KEYS.map((option) => (
+                      <option key={option.value} value={option.value}>{option.key ? t(option.key) : option.label}</option>
                     ))}
                   </select>
                 </label>

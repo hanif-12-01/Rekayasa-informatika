@@ -72,6 +72,15 @@ Beberapa bug yang ditemukan selama proses Smoke Test telah diperbaiki:
 * [ ] Sidebar berubah ke English tanpa refresh
 * [ ] Library empty state berubah ke English
 * [ ] Dashboard label utama berubah ke English
+* [ ] Chat & Task empty state berubah ke English
+* [ ] Chat & Task placeholder berubah ke English
+* [ ] Chat processing message berubah ke English
+* [ ] Chat completion overlay berubah ke English
+* [ ] Chat leave modal berubah ke English
+* [ ] Chat right panel (tool recommendations, tips) berubah ke English
+* [ ] Chat subtask buttons (Mark Done/Undo) berubah ke English
+* [ ] Toast dan modal berubah ke English
 * [ ] Profile → ubah kembali ke Indonesia
 * [ ] Setelah refresh, bahasa tetap sesuai preferensi terakhir
 * [ ] PUT `/api/profile` mengirim `language_preference`
+* [ ] Tidak ada enum backend yang berubah karena diterjemahkan

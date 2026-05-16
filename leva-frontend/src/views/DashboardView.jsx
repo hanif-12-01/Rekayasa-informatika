@@ -397,7 +397,7 @@ export default function DashboardView() {
     showToast,
     t,
   } = useApp();
-  const [activeFilter, setActiveFilter] = useState('Semua');
+  const [activeFilter, setActiveFilter] = useState('all');
   const [tools, setTools] = useState([]);
   const [isLoadingTools, setIsLoadingTools] = useState(true);
   const [toolsError, setToolsError] = useState('');
@@ -419,14 +419,14 @@ export default function DashboardView() {
 
     try {
       const params = { per_page: 12 };
-      if (category && category !== 'Semua') {
+      if (category && category !== 'all') {
         params.category = category;
       }
 
       const data = await toolService.list(params);
       setTools((data.tools ?? []).map(normalizeTool));
     } catch (error) {
-      const message = error.response?.data?.message ?? 'Gagal memuat tools. Coba lagi.';
+      const message = error.response?.data?.message ?? t('dashboard.loadFail');
       setToolsError(message);
     } finally {
       setIsLoadingTools(false);
@@ -508,7 +508,7 @@ export default function DashboardView() {
 
   const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
-  const FILTERS = ['Semua', 'Research', 'Writing', 'Coding', 'Data', 'Academic', 'Productivity'];
+  const FILTERS = ['all', 'Research', 'Writing', 'Coding', 'Data', 'Academic', 'Productivity'];
 
   const featuredTools = tools;
   const visibleFeaturedTools = showAllFeatured ? featuredTools : featuredTools.slice(0, 6);
@@ -611,7 +611,7 @@ export default function DashboardView() {
               onClick={() => fetchTools(activeFilter)}
               style={{ padding: '8px 14px', fontSize: 12 }}
             >
-              Coba Lagi
+              {t('dashboard.retry')}
             </button>
           </div>
         ) : isLoadingTools ? (
@@ -633,17 +633,17 @@ export default function DashboardView() {
         ) : (
           <div className="card" style={{ padding: '26px 22px', textAlign: 'center' }}>
             <p style={{ margin: '0 0 6px', fontSize: 15, fontWeight: 700, color: 'var(--color-text-primary)' }}>
-              Belum ada rekomendasi tools baru hari ini. Cek kembali besok!
+              {t('dashboard.noFeatured')}
             </p>
             <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--color-text-secondary)' }}>
-              Sementara itu, jelajahi tools yang sudah kamu simpan di Library.
+              {t('dashboard.noFeaturedSub')}
             </p>
             <button
               type="button"
               onClick={() => setActiveView('library')}
               style={{ border: 'none', background: 'transparent', color: 'var(--color-primary)', fontSize: 13, fontWeight: 700, cursor: 'pointer' }}
             >
-              Buka Library →
+              {t('dashboard.openLibrary')}
             </button>
           </div>
         )}
@@ -654,7 +654,7 @@ export default function DashboardView() {
               onClick={() => setShowAllFeatured(true)}
               style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, padding: '9px 14px' }}
             >
-              Lihat Semua <AppIcon name="arrow-right" size={14} />
+              {t('dashboard.viewAll')} <AppIcon name="arrow-right" size={14} />
             </button>
           </div>
         )}
@@ -674,7 +674,7 @@ export default function DashboardView() {
               boxShadow: activeFilter === f ? '0 2px 8px rgba(108,99,255,0.3)' : '0 1px 4px rgba(0,0,0,0.07)',
             }}
           >
-            {f}
+            {f === 'all' ? t('dashboard.filterAll') : f}
           </button>
         ))}
       </div>
@@ -683,12 +683,12 @@ export default function DashboardView() {
       <section style={{ marginBottom: 36 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14 }}>
           <AppIcon name="news" size={18} />
-          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Semua Tools Hari Ini</h2>
+          <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{t('dashboard.allToolsToday')}</h2>
           <span style={{
             fontSize: 12, fontWeight: 600, background: 'var(--color-primary-light)',
             color: 'var(--color-primary)', padding: '2px 8px', borderRadius: 999,
           }}>
-            {isLoadingTools ? 'Memuat...' : `${filteredTools.length} tools`}
+            {isLoadingTools ? t('dashboard.loading') : `${filteredTools.length} ${t('dashboard.tools')}`}
           </span>
         </div>
         {toolsError ? (
@@ -702,7 +702,7 @@ export default function DashboardView() {
               onClick={() => fetchTools(activeFilter)}
               style={{ padding: '8px 14px', fontSize: 12 }}
             >
-              Coba Lagi
+              {t('dashboard.retry')}
             </button>
           </div>
         ) : isLoadingTools ? (
@@ -724,7 +724,7 @@ export default function DashboardView() {
         ) : (
           <div style={{ textAlign: 'center', padding: '40px 20px', color: 'var(--color-text-secondary)' }}>
             <span style={{ display: 'inline-flex' }}><AppIcon name="search" size={36} /></span>
-            <p>Belum ada tools untuk kategori ini.</p>
+            <p>{t('dashboard.noCategory')}</p>
           </div>
         )}
       </section>
@@ -738,9 +738,9 @@ export default function DashboardView() {
       }}>
         <span style={{ display: 'flex', flexShrink: 0 }}><AppIcon name="lamp" size={28} /></span>
         <div style={{ flex: 1 }}>
-          <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>Tips Produktivitas Hari Ini</p>
+          <p style={{ margin: 0, fontWeight: 600, fontSize: 14 }}>{t('dashboard.tipTitle')}</p>
           <p style={{ margin: '4px 0 0', fontSize: 13, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
-            Coba ceritakan tugasmu ke Leva: <em>"Bantu aku buat literature review topik X untuk jurusan {jurusan}"</em> dan Leva akan otomatis memecahnya jadi langkah-langkah kecil plus merekomendasikan tools terbaik!
+            {t('dashboard.tipDesc')} <em>{t('dashboard.tipExample').replace('{jurusan}', jurusan)}</em> {t('dashboard.tipSuffix')}
           </p>
         </div>
         <button
@@ -748,7 +748,7 @@ export default function DashboardView() {
           onClick={() => setActiveView('chat')}
           style={{ flexShrink: 0, whiteSpace: 'nowrap', padding: '10px 18px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
         >
-          Coba Sekarang <AppIcon name="arrow-right" size={14} color="#fff" />
+          {t('dashboard.tryNow')} <AppIcon name="arrow-right" size={14} color="#fff" />
         </button>
       </div>
     </div>

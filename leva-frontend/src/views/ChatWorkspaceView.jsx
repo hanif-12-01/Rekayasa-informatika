@@ -40,15 +40,15 @@ const QUICK_PROMPTS_BY_JURUSAN = {
 const getFileExtension = (fileName = '') => fileName.split('.').pop()?.toLowerCase() || '';
 
 const validateAttachment = (file) => {
-  if (!file) return 'Pilih file terlebih dahulu.';
+  if (!file) return '__validation:noFile';
   if (file.size > MAX_ATTACHMENT_SIZE_BYTES) {
     const fileSizeMb = (file.size / (1024 * 1024)).toFixed(1);
-    return `Ukuran file maksimal 10MB. File kamu ${fileSizeMb}MB. Coba kompres terlebih dahulu.`;
+    return `__validation:tooLarge:${fileSizeMb}`;
   }
 
   const extension = getFileExtension(file.name);
   if (!ACCEPTED_ATTACHMENT_EXTENSIONS.includes(extension)) {
-    return 'Format file belum didukung. Saat ini Leva hanya menerima file PDF.';
+    return '__validation:unsupported';
   }
 
   return '';
@@ -73,11 +73,11 @@ const getEstimatedProcessingMs = ({ text, attachedFile }) => {
   return Math.min(baseMs + textComplexityMs + attachmentMs, 32000);
 };
 
-const getProcessingMessage = (elapsedSeconds) => {
-  if (elapsedSeconds < 5) return 'Leva sedang membaca tugasmu...';
-  if (elapsedSeconds < 15) return 'Memecah tugas menjadi langkah-langkah kecil...';
-  if (elapsedSeconds < 30) return 'Mencari tools AI yang paling relevan...';
-  return 'Hampir selesai, mohon tunggu sebentar...';
+const getProcessingMessageKey = (elapsedSeconds) => {
+  if (elapsedSeconds < 5) return 'chat.processing1';
+  if (elapsedSeconds < 15) return 'chat.processing2';
+  if (elapsedSeconds < 30) return 'chat.processing3';
+  return 'chat.processing4';
 };
 
 const resolveToolUrl = (url) => {
@@ -97,10 +97,11 @@ const normalizeSubTask = (subTask) => ({
   recommended_tools: Array.isArray(subTask.recommended_tools) ? subTask.recommended_tools : [],
 });
 
-const RAG_ERROR_MESSAGE = 'Gagal memproses tugas. Coba lagi.';
+const RAG_ERROR_MESSAGE_KEY = 'chat.ragErrorMsg';
 
 // --- Subtask Card
 function SubTaskCard({ task, index, isExpanded, onToggle, onMarkDone, isDoneJustNow }) {
+  const { t } = useApp();
   const ts = tagStyle(task.kategori);
   const [isHeaderHovered, setIsHeaderHovered] = useState(false);
 
@@ -155,10 +156,10 @@ function SubTaskCard({ task, index, isExpanded, onToggle, onMarkDone, isDoneJust
             : (
               <span
                 className="badge-next tooltip-host"
-                data-tooltip="Lanjut ke subtask berikutnya"
+                data-tooltip={t('chat.nextSectionTooltip')}
                 style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
               >
-                Next Section <AppIcon name="arrow-right" size={12} />
+                {t('chat.nextSection')} <AppIcon name="arrow-right" size={12} />
               </span>
             )
           }
@@ -195,7 +196,7 @@ function SubTaskCard({ task, index, isExpanded, onToggle, onMarkDone, isDoneJust
               onClick={() => onMarkDone(task.id)}
               style={{ padding: '9px 20px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
-              <AppIcon name="check" size={14} color="#fff" /> Tandai Selesai
+              <AppIcon name="check" size={14} color="#fff" /> {t('chat.markDone')}
             </button>
           ) : (
             <button
@@ -203,7 +204,7 @@ function SubTaskCard({ task, index, isExpanded, onToggle, onMarkDone, isDoneJust
               onClick={() => onMarkDone(task.id)}
               style={{ padding: '9px 20px', fontSize: 13, display: 'inline-flex', alignItems: 'center', gap: 6 }}
             >
-              <AppIcon name="undo" size={14} /> Tandai Ulang
+              <AppIcon name="undo" size={14} /> {t('chat.markUndo')}
             </button>
           )}
         </div>
@@ -214,6 +215,7 @@ function SubTaskCard({ task, index, isExpanded, onToggle, onMarkDone, isDoneJust
 
 // --- Right Panel: Tool Recommendations
 function RightPanel({ task, isOpen, onSave, isToolSaved, onCopyTips, copiedTipsTaskId }) {
+  const { t } = useApp();
   const tools = task?.recommended_tools ?? [];
 
   return (
@@ -238,7 +240,7 @@ function RightPanel({ task, isOpen, onSave, isToolSaved, onCopyTips, copiedTipsT
           {/* Rekomendasi Tools */}
           <div style={{ marginBottom: 20 }}>
             <p style={{ margin: '0 0 12px', fontSize: 12, fontWeight: 700, color: 'var(--color-text-secondary)', letterSpacing: '0.07em' }}>
-              REKOMENDASI TOOLS AI
+              {t('chat.toolRecommendations')}
             </p>
             {tools.map(tool => {
               const isSaved = isToolSaved(tool);
@@ -258,12 +260,12 @@ function RightPanel({ task, isOpen, onSave, isToolSaved, onCopyTips, copiedTipsT
                   </div>
                   <a
                     href={resolveToolUrl(tool.url)} target="_blank" rel="noreferrer"
-                    aria-label={`Buka ${tool.name}`}
+                    aria-label={tool.name}
                     style={{ display: 'flex', color: 'var(--color-primary)', textDecoration: 'none' }}
                   ><AppIcon name="external-link" size={14} /></a>
                 </div>
                 <p style={{ margin: '6px 0 10px', fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
-                  {description ? `${description.slice(0, 70)}...` : 'Deskripsi belum tersedia.'}
+                  {description ? `${description.slice(0, 70)}...` : t('chat.noDesc')}
                 </p>
                 <button
                   disabled={isSaved}
@@ -284,7 +286,7 @@ function RightPanel({ task, isOpen, onSave, isToolSaved, onCopyTips, copiedTipsT
                     cursor: isSaved ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  <AppIcon name={isSaved ? 'check' : 'book'} size={12} /> {isSaved ? '✓ Tersimpan' : 'Simpan ke Library'}
+                  <AppIcon name={isSaved ? 'check' : 'book'} size={12} /> {isSaved ? t('chat.savedToLib') : t('chat.saveToLib')}
                 </button>
               </div>
               );
@@ -298,7 +300,7 @@ function RightPanel({ task, isOpen, onSave, isToolSaved, onCopyTips, copiedTipsT
             borderRadius: 12, padding: '14px 14px', marginBottom: 16,
           }}>
             <p style={{ margin: '0 0 8px', fontSize: 12, fontWeight: 700, color: '#92400E' }}>
-              CARA MENGGUNAKAN TOOL INI
+              {t('chat.howToUse')}
             </p>
             <p style={{ margin: 0, fontSize: 12, color: '#78350F', lineHeight: 1.6 }}>
               {task.tips}
@@ -312,7 +314,7 @@ function RightPanel({ task, isOpen, onSave, isToolSaved, onCopyTips, copiedTipsT
               style={{ fontSize: 12, padding: '8px', display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}
               onClick={() => onCopyTips(task)}
             >
-              <AppIcon name="copy" size={12} /> {copiedTipsTaskId === task.id ? '✓ Tersalin!' : 'Salin Prompt Tips'}
+              <AppIcon name="copy" size={12} /> {copiedTipsTaskId === task.id ? t('chat.tipsCopied') : t('chat.copyTips')}
             </button>
           </div>
         </>
@@ -334,6 +336,7 @@ export default function ChatWorkspaceView() {
     refreshHistoryTasks,
     showToast,
     soundEnabled,
+    t,
   } = useApp();
   const firstName = user?.name ? user.name.split(' ')[0] : 'Renisa';
   const jurusan   = user?.jurusan ?? 'Teknik Informatika';
@@ -452,13 +455,13 @@ export default function ChatWorkspaceView() {
 
         const normalizedSubTasks = (task.sub_tasks ?? []).map(normalizeSubTask);
 
-        setTaskTitle(task.title ?? activeTask.title ?? 'Tugas Aktif');
+        setTaskTitle(task.title ?? activeTask.title ?? '');
         setSubTasks(normalizedSubTasks);
         setExpandedId(normalizedSubTasks[0]?.id ?? null);
         setCurrentTaskId(task.task_id ?? taskId);
       } catch {
         if (!isMounted) return;
-        setRagError('Gagal memuat detail task. Coba lagi sebentar.');
+        setRagError(t('chat.loadFail'));
       } finally {
         if (!isMounted) return;
         setIsLoadingHistory(false);
@@ -562,7 +565,13 @@ export default function ChatWorkspaceView() {
 
     if (validationError) {
       setAttachedFile(null);
-      setFileError(validationError);
+      let errorMsg = validationError;
+      if (validationError === '__validation:noFile') errorMsg = t('chat.fileValidation.noFile');
+      else if (validationError.startsWith('__validation:tooLarge:')) {
+        const size = validationError.split(':')[2];
+        errorMsg = t('chat.fileValidation.tooLarge').replace('{size}', size);
+      } else if (validationError === '__validation:unsupported') errorMsg = t('chat.fileValidation.unsupported');
+      setFileError(errorMsg);
       return;
     }
 
@@ -623,12 +632,12 @@ export default function ChatWorkspaceView() {
           if (soundEnabled) playSoundEffect('success');
         },
         (error) => {
-          setRagError(error?.message || RAG_ERROR_MESSAGE);
+          setRagError(error?.message || t(RAG_ERROR_MESSAGE_KEY));
           setIsLoading(false);
         }
       );
     } catch (error) {
-      setRagError(error.message === 'timeout' ? error.message : 'Gagal mengirim tugas. Pastikan backend API berjalan.');
+      setRagError(error.message === 'timeout' ? error.message : t('chat.sendFail'));
       setIsLoading(false);
     }
   };
@@ -764,7 +773,7 @@ export default function ChatWorkspaceView() {
         completionAnimationTimersRef.current.push(timerId);
       }
     } catch {
-      showToast('Gagal memperbarui status sub-task. Coba lagi.', 'error');
+      showToast(t('chat.subtaskFail'), 'error');
     }
   };
 
@@ -787,13 +796,13 @@ export default function ChatWorkspaceView() {
       const assistantMessage = {
         id: `${Date.now()}-assistant`,
         role: 'assistant',
-        text: response.reply ?? 'Maaf, Leva belum bisa menjawab saat ini.',
+        text: response.reply ?? t('chat.chatNoReply'),
         tools: Array.isArray(response.recommended_tools) ? response.recommended_tools : [],
       };
 
       setFollowUpMessages((prev) => [...prev, assistantMessage]);
     } catch (error) {
-      const messageText = error.response?.data?.message ?? 'Maaf, chat gagal dikirim. Coba lagi ya.';
+      const messageText = error.response?.data?.message ?? t('chat.chatFail');
       showToast(messageText, 'error');
     }
   };
@@ -813,7 +822,7 @@ export default function ChatWorkspaceView() {
   const expandedTask  = subTasks.find(t => t.id === expandedId) ?? null;
   const hasResults    = subTasks.length > 0;
   const canSendMessage = inputVal.trim().length > 0 || Boolean(attachedFile);
-  const processingMessage = getProcessingMessage(loadingElapsedSeconds);
+  const processingMessage = t(getProcessingMessageKey(loadingElapsedSeconds));
   const rightPanelOpen = !!expandedTask;
   const savedToolIds = new Set(
     savedTools
@@ -836,18 +845,18 @@ export default function ChatWorkspaceView() {
   const handleSaveTool = async (tool) => {
     if (!tool?.id) return;
     if (isToolSaved(tool)) {
-      showToast('Tool sudah ada di Library.', 'info');
+      showToast(t('chat.alreadySaved'), 'info');
       return;
     }
 
     try {
       await bookmarkService.create(tool.id);
-      showToast('AI sedang men-tag tool... cek di Library beberapa detik lagi', 'success');
+      showToast(t('chat.aiTagging'), 'success');
       if (refreshSavedTools) {
         refreshSavedTools().catch(() => {});
       }
     } catch (error) {
-      const messageText = error.response?.data?.message ?? 'Gagal menyimpan tool. Coba lagi.';
+      const messageText = error.response?.data?.message ?? t('chat.saveFail');
       showToast(messageText, 'error');
     }
   };
@@ -860,12 +869,12 @@ export default function ChatWorkspaceView() {
 
       await navigator.clipboard.writeText(task.tips);
       setCopiedTipsTaskId(task.id);
-      showToast('Tersalin! Prompt tips berhasil disalin ke clipboard.', 'success');
+      showToast(t('chat.tipsCopiedToast'), 'success');
 
       if (copyResetTimerRef.current) clearTimeout(copyResetTimerRef.current);
       copyResetTimerRef.current = setTimeout(() => setCopiedTipsTaskId(null), 2000);
     } catch {
-      showToast('Gagal menyalin prompt tips.', 'error');
+      showToast(t('chat.tipsCopyFail'), 'error');
     }
   };
 
@@ -936,10 +945,10 @@ export default function ChatWorkspaceView() {
             }}>
               <div style={{ display: 'flex', marginBottom: 16 }}><AppIcon name="sparkles" size={40} /></div>
               <h2 style={{ margin: '0 0 8px', fontSize: 22, fontWeight: 700, textAlign: 'center' }}>
-                Hei, {firstName}! Ceritakan tugasmu hari ini.
+                {t('chat.emptyTitle').replace('{name}', firstName)}
               </h2>
               <p style={{ margin: '0 0 32px', fontSize: 14, color: 'var(--color-text-secondary)', textAlign: 'center', maxWidth: 440, lineHeight: 1.65 }}>
-                Leva akan memecahnya jadi langkah-langkah kecil dan merekomendasikan tools AI terbaik untukmu.
+                {t('chat.emptyDesc')}
               </p>
 
               {/* Main Input */}
@@ -993,7 +1002,7 @@ export default function ChatWorkspaceView() {
                       handleSubmit();
                     }
                   }}
-                  placeholder="Contoh: aku mau bikin skripsi, atau bantu aku buat essay etika profesi..."
+                  placeholder={t('chat.inputPlaceholder')}
                   rows={3}
                   onDragEnter={handleDragEnter}
                   onDragOver={handleDragOver}
@@ -1019,7 +1028,7 @@ export default function ChatWorkspaceView() {
                   disabled={isLoading}
                   aria-label="Unggah file"
                   className="tooltip-host"
-                  data-tooltip="Lampirkan file PDF silabus atau dokumen tugasmu"
+                  data-tooltip={t('chat.uploadTooltip')}
                   style={{
                     position: 'absolute', left: 12, bottom: 12,
                     background: 'transparent',
@@ -1057,7 +1066,7 @@ export default function ChatWorkspaceView() {
                     onDragLeave={handleDragLeave}
                     onDrop={handleDrop}
                   >
-                    Lepaskan file di sini
+                    {t('chat.dropFile')}
                   </div>
                 )}
               </div>
@@ -1084,7 +1093,7 @@ export default function ChatWorkspaceView() {
                         </span>
                       </p>
                       <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-text-secondary)' }}>
-                        (estimasi ~{estimatedProcessingSeconds} detik)
+                        ({t('chat.estimatedTime').replace('{seconds}', estimatedProcessingSeconds)})
                       </p>
                     </div>
                   </div>
@@ -1103,16 +1112,16 @@ export default function ChatWorkspaceView() {
                     disabled={!lastSubmission || isLoading}
                     style={{ marginTop: 10, border: '1px solid #FCA5A5', background: '#fff', color: '#B91C1C', borderRadius: 8, fontSize: 12, fontWeight: 700, padding: '6px 10px', cursor: !lastSubmission || isLoading ? 'not-allowed' : 'pointer', opacity: !lastSubmission || isLoading ? 0.6 : 1 }}
                   >
-                    🔄 Coba Lagi
+                    {t('chat.retry')}
                   </button>
                 </div>
               )}
 
-              {!isLoading && <p style={{ marginTop: 12, fontSize: 12, color: 'var(--color-text-secondary)' }}>Tekan Enter atau Ctrl+Enter untuk kirim</p>}
+              {!isLoading && <p style={{ marginTop: 12, fontSize: 12, color: 'var(--color-text-secondary)' }}>{t('chat.sendHint')}</p>}
 
               {/* Quick suggestions */}
               <p style={{ margin: '20px 0 8px', fontSize: 13, color: 'var(--color-text-secondary)' }}>
-                Atau coba salah satu contoh ini:
+                {t('chat.quickPromptsHint')}
               </p>
               <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
                 {quickPromptChips.map(s => (
@@ -1152,7 +1161,7 @@ export default function ChatWorkspaceView() {
             }}>
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10 }}>
                 <AppIcon name="loader" size={28} className="send-spinner" />
-                <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>Memuat detail task...</p>
+                <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>{t('chat.loadingTask')}</p>
               </div>
             </div>
           )}
@@ -1166,11 +1175,11 @@ export default function ChatWorkspaceView() {
                 display: 'flex', justifyContent: 'space-between', alignItems: 'center',
               }}>
                 <div>
-                  <p style={{ margin: '0 0 4px', fontSize: 12, opacity: 0.75, fontWeight: 600, letterSpacing: '0.06em' }}>TASK AKTIF</p>
+                  <p style={{ margin: '0 0 4px', fontSize: 12, opacity: 0.75, fontWeight: 600, letterSpacing: '0.06em' }}>{t('chat.activeTask')}</p>
                   <h2 style={{ margin: 0, fontSize: 20, fontWeight: 700 }}>{taskTitle}</h2>
                 </div>
                 <div style={{ textAlign: 'right' }}>
-                  <p style={{ margin: '0 0 6px', fontSize: 12, opacity: 0.75 }}>{completedCount}/{subTasks.length} selesai</p>
+                  <p style={{ margin: '0 0 6px', fontSize: 12, opacity: 0.75 }}>{completedCount}/{subTasks.length} {t('chat.xOfYDone')}</p>
                   <div style={{ width: 100, height: 6, background: 'rgba(255,255,255,0.25)', borderRadius: 3 }}>
                     <div style={{ width: `${progressPct}%`, height: '100%', background: '#fff', borderRadius: 3, transition: 'width 0.5s ease-in-out' }} />
                   </div>
@@ -1196,9 +1205,9 @@ export default function ChatWorkspaceView() {
                   borderRadius: 16, padding: '24px', textAlign: 'center', marginTop: 16, color: '#fff',
                 }}>
                   <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 8 }}><AppIcon name="check" size={40} color="#fff" /></div>
-                  <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>Semua task selesai!</h3>
+                  <h3 style={{ margin: '0 0 8px', fontSize: 18, fontWeight: 700 }}>{t('chat.allDoneTitle')}</h3>
                   <p style={{ margin: 0, fontSize: 14, opacity: 0.9 }}>
-                    Kerja bagus, {firstName}! Kamu berhasil menyelesaikan semua langkah untuk "{taskTitle}".
+                    {t('chat.allDoneDesc').replace('{name}', firstName).replace('{title}', taskTitle)}
                   </p>
                 </div>
               )}
@@ -1239,7 +1248,7 @@ export default function ChatWorkspaceView() {
                                 cursor: isToolSaved(tool) ? 'not-allowed' : 'pointer',
                               }}
                             >
-                              {isToolSaved(tool) ? 'Tersimpan' : 'Simpan'} · {tool.name}
+                              {isToolSaved(tool) ? t('chat.saved') : t('chat.save')} · {tool.name}
                             </button>
                           ))}
                         </div>
@@ -1259,7 +1268,7 @@ export default function ChatWorkspaceView() {
                         handleFollowUp();
                       }
                     }}
-                    placeholder="Tanya lebih lanjut tentang task ini..."
+                    placeholder={t('chat.followUpPlaceholder')}
                     rows={1}
                     style={{
                       flex: 1, padding: '10px 14px',
@@ -1274,8 +1283,8 @@ export default function ChatWorkspaceView() {
                     onFocus={e => e.target.style.borderColor = 'var(--color-primary)'}
                     onBlur={e  => e.target.style.borderColor = 'var(--color-border)'}
                   />
-                  <button className="btn-primary tooltip-host" data-tooltip="Kirim (Enter)" onClick={handleFollowUp} style={{ padding: '10px 18px', fontSize: 13 }}>
-                    Kirim
+                  <button className="btn-primary tooltip-host" data-tooltip={`${t('chat.send')} (Enter)`} onClick={handleFollowUp} style={{ padding: '10px 18px', fontSize: 13 }}>
+                    {t('chat.send')}
                   </button>
                 </div>
               </div>
@@ -1317,14 +1326,14 @@ export default function ChatWorkspaceView() {
             <div className="completion-icon-wrap">
               <AppIcon name="check" size={44} color="#fff" />
             </div>
-            <h3 className="completion-title">🎉 Selamat! Semua subtask selesai!</h3>
-            <p className="completion-subtitle">Kerja bagus, {firstName}! Kamu telah menyelesaikan {taskTitle}.</p>
+            <h3 className="completion-title">{t('chat.completionTitle')}</h3>
+            <p className="completion-subtitle">{t('chat.completionDesc').replace('{name}', firstName).replace('{title}', taskTitle)}</p>
             <div style={{ display: 'flex', gap: 10, marginTop: 8 }}>
               <button ref={completionPrimaryActionRef} className="btn-primary" onClick={handleViewSummary} style={{ flex: 1 }}>
-                Lihat Ringkasan
+                {t('chat.viewSummary')}
               </button>
               <button className="btn-ghost" onClick={handleStartNewTask} style={{ flex: 1 }}>
-                Mulai Task Baru
+                {t('chat.startNewTask')}
               </button>
             </div>
           </div>
@@ -1332,9 +1341,9 @@ export default function ChatWorkspaceView() {
       )}
 
       {showLeaveDraftModal && (
-        <Modal title="Teks Belum Terkirim" onClose={handleStayInChat}>
+        <Modal title={t('chat.leaveTitle')} onClose={handleStayInChat}>
           <p style={{ margin: '0 0 18px', fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
-            Kamu memiliki teks yang belum dikirim. Yakin ingin meninggalkan halaman?
+            {t('chat.leaveDesc')}
           </p>
           <div style={{ display: 'flex', gap: 10 }}>
             <button
@@ -1352,7 +1361,7 @@ export default function ChatWorkspaceView() {
                 cursor: 'pointer',
               }}
             >
-              Tetap di Sini
+              {t('chat.stayHere')}
             </button>
             <button
               type="button"
@@ -1369,7 +1378,7 @@ export default function ChatWorkspaceView() {
                 cursor: 'pointer',
               }}
             >
-              Tinggalkan
+              {t('chat.leave')}
             </button>
           </div>
         </Modal>

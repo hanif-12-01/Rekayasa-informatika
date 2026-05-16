@@ -100,6 +100,18 @@ Command frontend yang dijalankan: `npm run build`
 * Cara verifikasi: Buka Profile → ubah bahasa ke English → Simpan. Sidebar, Dashboard, Library, dan Profile harus langsung berubah ke English. Refresh → bahasa tetap English. Ubah kembali ke Indonesia → semua kembali ke Bahasa Indonesia.
 * Status: Needs Verification
 
+### BUG-011 — Terjemahan preferensi bahasa belum merata
+
+* Halaman: Chat & Task, Dashboard (sebagian), dan area toast/modal
+* Gejala: Saat user mengubah bahasa ke English di Profile, teks di Chat & Task dan beberapa toast masih tampil dalam Bahasa Indonesia.
+* Expected: Seluruh teks user-facing berubah ke bahasa yang dipilih.
+* Actual: Hanya Sidebar, sebagian Dashboard, Library, dan Profile yang sudah diterjemahkan. Chat & Task dan beberapa area Dashboard masih hardcoded.
+* Penyebab: Sebagian besar teks UI masih hardcoded dan belum menggunakan helper `t()` dari sistem i18n.
+* File yang diubah: `src/utils/i18n.js`, `src/views/ChatWorkspaceView.jsx`, `src/views/DashboardView.jsx`
+* Fix: Ditambahkan ~55 key terjemahan baru untuk Chat & Task. Seluruh string user-facing di ChatWorkspaceView (input placeholder, processing messages, completion overlay, leave modal, subtask buttons, right panel, toast, error, file validation) kini memakai `t()`. Dashboard child components `FeaturedToolCard` dan `DailyProgressWidget` juga memakai `t()`.
+* Cara verifikasi: Buka Profile → ubah ke English → Simpan. Buka Chat & Task → semua label, placeholder, modal, dan toast dalam English. Buka Dashboard → greeting, stats, buttons dalam English. Ubah kembali ke Indonesia → semua kembali.
+* Status: Needs Verification
+
 ## Checklist Verifikasi Manual
 
 * [x] Library menampilkan total tools sesuai jumlah bookmark.
