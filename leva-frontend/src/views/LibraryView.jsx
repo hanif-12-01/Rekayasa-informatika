@@ -227,6 +227,7 @@ export default function LibraryView() {
     setActiveView,
     showToast,
     refreshSavedTools,
+    t,
   } = useApp();
   const [priorityFilter, setPriorityFilter] = useState('all');
   const [categoryFilter, setCategoryFilter] = useState('Semua');
@@ -452,7 +453,7 @@ export default function LibraryView() {
     try {
       const toolId = toolToDelete.toolId ?? toolToDelete.id;
       await bookmarkService.deleteBookmark(toolId);
-      showToast('Tool berhasil dihapus', 'info');
+      showToast(t('library.deleteSuccess'), 'info');
       setToolToDelete(null);
       fetchBookmarks();
       fetchTags();
@@ -460,7 +461,7 @@ export default function LibraryView() {
         refreshSavedTools().catch(() => {});
       }
     } catch (error) {
-      const message = error.response?.data?.message ?? 'Gagal menghapus tool. Coba lagi.';
+      const message = error.response?.data?.message ?? t('library.deleteFail');
       showToast(message, 'error');
     }
   };
@@ -470,7 +471,7 @@ export default function LibraryView() {
     setIsSavingTool(true);
     try {
       await bookmarkService.saveBookmark(selectedToolToSave.id, saveToolNote);
-      showToast('Tool berhasil disimpan ke Library.', 'success');
+      showToast(t('library.saveSuccess'), 'success');
       fetchBookmarks();
       fetchTags();
       if (refreshSavedTools) {
@@ -481,7 +482,7 @@ export default function LibraryView() {
       setSelectedToolToSave(null);
       setSaveToolNote('');
     } catch (error) {
-      const message = error.response?.data?.message ?? 'Gagal menyimpan tool. Coba lagi.';
+      const message = error.response?.data?.message ?? t('library.saveFail');
       showToast(message, 'error');
     } finally {
       setIsSavingTool(false);
@@ -526,15 +527,15 @@ export default function LibraryView() {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 28 }}>
         <div>
           <h1 style={{ margin: 0, fontSize: 24, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <AppIcon name="library" size={22} /> Library Tools Saya
+            <AppIcon name="library" size={22} /> {t('library.title')}
           </h1>
           <p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--color-text-secondary)' }}>
-            Koleksi alat AI yang sudah kamu simpan, dilengkapi label prioritas otomatis.
+            {t('library.subtitle')}
           </p>
         </div>
         <button className="btn-primary" onClick={() => setShowAddModal(true)} style={{ whiteSpace: 'nowrap' }}>
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            <AppIcon name="plus" size={14} color="#fff" /> Tambah Manual
+            <AppIcon name="plus" size={14} color="#fff" /> {t('library.addTool')}
           </span>
         </button>
       </div>
@@ -545,13 +546,13 @@ export default function LibraryView() {
             <AppIcon name="folder" size={44} color="#94A3B8" />
           </div>
           <h3 style={{ margin: '0 0 10px', fontSize: 24, fontWeight: 800, color: 'var(--color-text-primary)' }}>
-            Belum ada tool yang disimpan.
+            {t('library.emptyTitle')}
           </h3>
           <p style={{ margin: '0 0 22px', maxWidth: 520, fontSize: 14, lineHeight: 1.7, color: 'var(--color-text-secondary)' }}>
-            Simpan tool dari Dashboard atau Chat untuk melihatnya di sini.
+            {t('library.emptyDesc')}
           </p>
           <button className="btn-primary" onClick={() => setActiveView('dashboard')} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, padding: '10px 16px' }}>
-            Ke Dashboard <AppIcon name="arrow-right" size={14} color="#fff" />
+            {t('library.goToDashboard')} <AppIcon name="arrow-right" size={14} color="#fff" />
           </button>
         </div>
       ) : (
@@ -559,9 +560,9 @@ export default function LibraryView() {
           {/* Stats row */}
           <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 12, marginBottom: 24 }}>
             {[
-              { label: 'Total Tools', val: filtered.length, icon: 'folder' },
-              { label: 'Wajib Dicoba', val: filtered.filter(t => t.priorityKey === 'must_try').length, icon: 'flame' },
-              { label: 'Sangat Bagus', val: filtered.filter(t => t.priorityKey === 'very_good').length, icon: 'check' },
+              { label: t('library.totalTools'), val: filtered.length, icon: 'folder' },
+              { label: t('library.mustTry'), val: filtered.filter(t2 => t2.priorityKey === 'must_try').length, icon: 'flame' },
+              { label: t('library.veryGood'), val: filtered.filter(t2 => t2.priorityKey === 'very_good').length, icon: 'check' },
             ].map(stat => (
               <div key={stat.label} className="card" style={{ flex: 1, padding: '14px 18px', display: 'flex', alignItems: 'center', gap: 12 }}>
                 <span style={{ display: 'flex' }}><AppIcon name={stat.icon} size={22} /></span>
@@ -581,14 +582,14 @@ export default function LibraryView() {
               <input
                 value={searchVal}
                 onChange={e => setSearchVal(e.target.value)}
-                placeholder="Cari nama tool, tag, atau kategori..."
+                placeholder={t('library.searchPlaceholder')}
                 style={{ ...inputStyle, marginBottom: 20 }}
                 onFocus={e => e.target.style.borderColor = 'var(--color-primary)'}
                 onBlur={e => e.target.style.borderColor = 'var(--color-border)'}
               />
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
-                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', letterSpacing: '0.07em', margin: 0 }}>PRIORITAS</p>
+                <p style={{ fontSize: 11, fontWeight: 700, color: 'var(--color-text-secondary)', letterSpacing: '0.07em', margin: 0 }}>{t('library.priority')}</p>
                 <span
                   className="tooltip-host tooltip-help-icon"
                   data-tooltip="Prioritas ditentukan otomatis berdasarkan frekuensi penggunaan dan rating tool."
@@ -703,13 +704,13 @@ export default function LibraryView() {
                     {errorMessage}
                   </p>
                   <button className="btn-secondary" onClick={fetchBookmarks}>
-                    Coba Lagi
+                    {t('library.retry')}
                   </button>
                 </div>
               ) : isLoading ? (
                 <div style={{ textAlign: 'center', padding: '56px 20px' }}>
                   <p style={{ margin: 0, color: 'var(--color-text-secondary)', fontSize: 14 }}>
-                    Memuat Library...
+                    {t('library.loading')}
                   </p>
                 </div>
               ) : filtered.length === 0 ? (
@@ -721,10 +722,10 @@ export default function LibraryView() {
                     </span>
                   </span>
                   <p style={{ margin: '14px 0 14px', color: 'var(--color-text-secondary)', fontSize: 14, lineHeight: 1.7 }}>
-                    Tidak ada tools yang cocok dengan filter ini. Coba ubah filter atau tambah tools baru.
+                    {t('library.noMatch')}
                   </p>
                   <button className="btn-secondary" onClick={handleResetFilters}>
-                    Reset Filter
+                    {t('library.resetFilter')}
                   </button>
                 </div>
               ) : (
@@ -741,103 +742,112 @@ export default function LibraryView() {
 
       {/* Add Tool Modal */}
       {showAddModal && (
-        <Modal title="Cari Tool untuk Disimpan" onClose={() => {
+        <Modal title={t('library.searchToolTitle')} onClose={() => {
           setShowAddModal(false);
           setSearchToolQuery('');
           setSelectedToolToSave(null);
           setSaveToolNote('');
         }}>
-          <div>
-            {!selectedToolToSave ? (
-              <>
-                <input
-                  value={searchToolQuery}
-                  onChange={(e) => setSearchToolQuery(e.target.value)}
-                  placeholder="Ketik nama tool..."
-                  style={inputStyle}
-                  autoFocus
-                />
-                
-                <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 16 }}>
-                  {isSearchingTool ? (
-                    <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--color-text-secondary)', padding: 20 }}>Mencari tool...</p>
-                  ) : searchToolResults.length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '30px 10px', background: 'var(--color-bg)', borderRadius: 12 }}>
-                      <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>Tool tidak ditemukan</p>
-                      <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-secondary)' }}>Tool belum tersedia di database. Pilih tool dari hasil pencarian agar bisa disimpan permanen.</p>
-                    </div>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                      {searchToolResults.map((tool) => (
-                        <button
-                          key={tool.id}
-                          type="button"
-                          onClick={() => setSelectedToolToSave(tool)}
-                          style={{
-                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                            padding: '12px 14px', background: 'var(--color-surface)', border: '1px solid var(--color-border)',
-                            borderRadius: 10, cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.2s',
-                          }}
-                          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
-                          onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--color-border)'}
-                        >
-                          <div>
-                            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>{tool.name}</p>
-                            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-text-secondary)' }}>{tool.category}</p>
-                          </div>
-                          <AppIcon name="arrow-right" size={16} color="var(--color-text-secondary)" />
-                        </button>
-                      ))}
-                    </div>
-                  )}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 600 }}>{t('library.searchToolLabel')}</label>
+              <input
+                value={searchToolQuery}
+                onChange={(e) => setSearchToolQuery(e.target.value)}
+                placeholder={t('library.searchToolPlaceholder')}
+                style={inputStyle}
+                autoFocus
+              />
+            </div>
+
+            {selectedToolToSave ? (
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--color-primary-light)', borderRadius: 10 }}>
+                <div>
+                  <p style={{ margin: 0, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>{t('library.selectedTool')}</p>
+                  <p style={{ margin: '2px 0 0', fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>{selectedToolToSave.name}</p>
                 </div>
-              </>
+                <button type="button" onClick={() => setSelectedToolToSave(null)} style={{ background: 'transparent', border: 'none', color: 'var(--color-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>{t('library.change')}</button>
+              </div>
             ) : (
-              <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--color-primary-light)', borderRadius: 10, marginBottom: 16 }}>
-                  <div>
-                    <p style={{ margin: 0, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>Tool Terpilih</p>
-                    <p style={{ margin: '2px 0 0', fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>{selectedToolToSave.name}</p>
+              <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--color-border)', borderRadius: 10 }}>
+                {isSearchingTool ? (
+                  <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--color-text-secondary)', padding: 20 }}>{t('library.searching')}</p>
+                ) : searchToolResults.length === 0 ? (
+                  <div style={{ textAlign: 'center', padding: '30px 10px', background: 'var(--color-bg)' }}>
+                    <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>{t('library.toolNotFound')}</p>
+                    <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-secondary)', lineHeight: 1.5 }}>
+                      {t('library.toolNotFoundDesc')}
+                    </p>
                   </div>
-                  <button type="button" onClick={() => setSelectedToolToSave(null)} style={{ background: 'transparent', border: 'none', color: 'var(--color-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Ganti</button>
-                </div>
-
-                <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Catatan (opsional)</label>
-                <textarea
-                  value={saveToolNote}
-                  onChange={(e) => setSaveToolNote(e.target.value)}
-                  placeholder="Untuk apa tool ini?"
-                  rows={3}
-                  style={{ ...inputStyle, resize: 'none' }}
-                />
-
-                <div style={{ display: 'flex', gap: 10 }}>
-                  <button className="btn-ghost" onClick={() => {
-                    setShowAddModal(false);
-                    setSearchToolQuery('');
-                    setSelectedToolToSave(null);
-                    setSaveToolNote('');
-                  }} style={{ flex: 1 }}>Batal</button>
-                  <button className="btn-primary" onClick={handleAddTool} disabled={isSavingTool} style={{ flex: 2 }}>
-                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                      {isSavingTool ? 'Menyimpan...' : <><AppIcon name="check" size={14} color="#fff" /> Simpan ke Library</>}
-                    </span>
-                  </button>
-                </div>
-              </>
+                ) : (
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
+                    {searchToolResults.map((tool, index) => (
+                      <button
+                        key={tool.id}
+                        type="button"
+                        onClick={() => setSelectedToolToSave(tool)}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '12px 14px', background: 'var(--color-surface)', borderBottom: index === searchToolResults.length - 1 ? 'none' : '1px solid var(--color-border)',
+                          borderTop: 'none', borderLeft: 'none', borderRight: 'none',
+                          cursor: 'pointer', textAlign: 'left', transition: 'background 0.2s',
+                        }}
+                        onMouseEnter={e => e.currentTarget.style.background = 'var(--color-bg)'}
+                        onMouseLeave={e => e.currentTarget.style.background = 'var(--color-surface)'}
+                      >
+                        <div>
+                          <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>{tool.name}</p>
+                          <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-text-secondary)' }}>{tool.category}</p>
+                        </div>
+                        <AppIcon name="arrow-right" size={16} color="var(--color-text-secondary)" />
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
             )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+              <label style={{ fontSize: 13, fontWeight: 600 }}>{t('library.noteLabel')}</label>
+              <textarea
+                value={saveToolNote}
+                onChange={(e) => setSaveToolNote(e.target.value)}
+                placeholder={t('library.notePlaceholder')}
+                rows={3}
+                style={{ ...inputStyle, resize: 'none' }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: 10, marginTop: 4 }}>
+              <button className="btn-ghost" onClick={() => {
+                setShowAddModal(false);
+                setSearchToolQuery('');
+                setSelectedToolToSave(null);
+                setSaveToolNote('');
+              }} style={{ flex: 1 }}>{t('library.cancel')}</button>
+              <button 
+                className="btn-primary" 
+                onClick={handleAddTool} 
+                disabled={!selectedToolToSave || isSavingTool} 
+                style={{ flex: 2, opacity: !selectedToolToSave ? 0.5 : 1 }}
+              >
+                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                  {isSavingTool ? t('dashboard.saving') : <><AppIcon name="check" size={14} color="#fff" /> {t('library.saveToLibrary')}</>}
+                </span>
+              </button>
+            </div>
           </div>
         </Modal>
       )}
 
       {toolToDelete && (
-        <Modal title="Hapus Tool?" onClose={() => setToolToDelete(null)}>
+        <Modal title={t('library.deleteTitle')} onClose={() => setToolToDelete(null)}>
           <p style={{ margin: '0 0 16px', fontSize: 14, color: 'var(--color-text-secondary)', lineHeight: 1.6 }}>
-            Apakah kamu yakin ingin menghapus {toolToDelete.name} dari library?
+            {t('library.deleteConfirm')} {toolToDelete.name} {t('library.deleteFrom')}
           </p>
           <div style={{ display: 'flex', gap: 10 }}>
             <button className="btn-ghost" onClick={() => setToolToDelete(null)} style={{ flex: 1 }}>
-              Batal
+              {t('library.cancel')}
             </button>
             <button
               onClick={handleConfirmDelete}
@@ -853,7 +863,7 @@ export default function LibraryView() {
                 padding: '10px 16px',
               }}
             >
-              Hapus
+              {t('library.confirmDelete')}
             </button>
           </div>
         </Modal>

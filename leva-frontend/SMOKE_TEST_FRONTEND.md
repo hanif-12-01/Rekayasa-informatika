@@ -48,8 +48,14 @@ Beberapa bug yang ditemukan selama proses Smoke Test telah diperbaiki:
 - **BUG-006 (Library)**: Statistik "Sangat Bagus" sekarang bertambah berkat canonical priority (Fixed, Needs Verification).
 - **BUG-007 (Dashboard)**: Tombol Simpan di Dashboard berhasil memakai method service alias `create` (Fixed, Needs Verification).
 - **BUG-008 (App)**: Request looping `/tasks` dan `/bookmarks` berhasil diatasi dengan `useCallback` dan guard (Fixed, Needs Verification).
+- **BUG-009 (Landing)**: Landing Page tidak lagi auto-redirect ke Dashboard saat token valid. Navigasi hanya terjadi via tombol CTA (Fixed, Needs Verification).
+- **BUG-010 (i18n)**: Sistem i18n ditambahkan. Mengubah bahasa di Profile langsung mengubah teks Sidebar, Dashboard, Library, dan Profile (Fixed, Needs Verification).
 
 ## Checklist Verifikasi Lanjutan
+* [ ] Search tool yang ada, misalnya Perplexity AI.
+* [ ] Search tool yang belum ada, misalnya Gemini.
+* [ ] Tool kosong menampilkan empty state.
+* [ ] Tool yang ada bisa disimpan permanen.
 * [ ] Tambah tool dari Library menghasilkan POST `/api/bookmarks`
 * [ ] Payload POST `/bookmarks` berisi `tool_id`
 * [ ] Setelah refresh/relog, bookmark tetap muncul
@@ -57,3 +63,15 @@ Beberapa bug yang ditemukan selama proses Smoke Test telah diperbaiki:
 * [ ] Statistik Sangat Bagus sesuai jumlah bookmark `very_good`
 * [ ] Saat berada di Library, tidak ada request `/api/tasks` berulang
 * [ ] `GET /bookmarks` tidak loop terus-menerus
+* [ ] Hapus `leva_token`, refresh → Landing tetap ditampilkan saat scroll
+* [ ] Token valid + refresh → Landing tetap ditampilkan sampai klik tombol
+* [ ] Klik "Masuk" saat token valid → langsung ke Dashboard
+* [ ] Klik "Masuk" tanpa token → ke Onboarding/Login
+* [ ] Klik "Mulai Gratis" → ke Onboarding/Register
+* [ ] Profile → ubah bahasa ke English → Simpan
+* [ ] Sidebar berubah ke English tanpa refresh
+* [ ] Library empty state berubah ke English
+* [ ] Dashboard label utama berubah ke English
+* [ ] Profile → ubah kembali ke Indonesia
+* [ ] Setelah refresh, bahasa tetap sesuai preferensi terakhir
+* [ ] PUT `/api/profile` mengirim `language_preference`

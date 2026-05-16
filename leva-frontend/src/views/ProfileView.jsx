@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useApp } from '../context/AppContext';
+import { profileService } from '../services/profileService';
+import { normalizeLanguage } from '../utils/i18n';
 import AppIcon from '../components/AppIcon';
 import Modal from '../components/Modal';
 
@@ -19,6 +21,8 @@ export default function ProfileView() {
     setSoundEnabled,
     setProfileHasUnsavedChanges,
     showToast,
+    setLanguage,
+    t,
   } = useApp();
   const [editMode, setEditMode] = useState(false);
   const [notif1, setNotif1] = useState(true);
@@ -34,7 +38,7 @@ export default function ProfileView() {
     name: user?.name ?? 'Renisa Mahardika',
     jurusan: user?.jurusan ?? 'Teknik Informatika',
     semester: user?.semester ?? '6',
-    bahasa: user?.bahasa ?? 'Indonesia',
+    bahasa: normalizeLanguage(user?.language_preference ?? user?.profile?.language_preference ?? user?.bahasa ?? 'id'),
   });
   const [errors, setErrors] = useState({});
   const initialProfileRef = useRef({
@@ -42,7 +46,7 @@ export default function ProfileView() {
       name: user?.name ?? 'Renisa Mahardika',
       jurusan: user?.jurusan ?? 'Teknik Informatika',
       semester: user?.semester ?? '6',
-      bahasa: user?.bahasa ?? 'Indonesia',
+      bahasa: normalizeLanguage(user?.language_preference ?? user?.profile?.language_preference ?? user?.bahasa ?? 'id'),
     },
     notifications: {
       soundEnabled,
@@ -65,17 +69,17 @@ export default function ProfileView() {
     const trimmedName = form.name.trim();
 
     if (!trimmedName) {
-      nextErrors.name = 'Nama tidak boleh kosong.';
+      nextErrors.name = t('profile.nameEmpty');
     } else if (trimmedName.length < 2) {
-      nextErrors.name = 'Nama minimal 2 karakter.';
+      nextErrors.name = t('profile.nameMin');
     }
 
     setErrors(nextErrors);
     return Object.keys(nextErrors).length === 0;
   };
 
-  const commitProfileChanges = () => {
-    if (!validateProfileForm()) return;
+  const commitProfileChanges = async () => {
+    if (!validateProfileForm()) return false;
 
     try {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) {
@@ -84,7 +88,21 @@ export default function ProfileView() {
 
       const sanitizedForm = { ...form, name: form.name.trim() };
 
-      setUser(sanitizedForm);
+      // Persist to backend
+      try {
+        await profileService.update({
+          major: sanitizedForm.jurusan,
+          semester: sanitizedForm.semester,
+          language_preference: sanitizedForm.bahasa,
+        });
+      } catch { /* best-effort — profile still updates locally */ }
+
+      setUser((prev) => ({
+        ...prev,
+        ...sanitizedForm,
+        language_preference: sanitizedForm.bahasa,
+      }));
+      setLanguage(sanitizedForm.bahasa);
       setForm(sanitizedForm);
       initialProfileRef.current = {
         form: sanitizedForm,
@@ -98,10 +116,10 @@ export default function ProfileView() {
 
       setErrors({});
       setEditMode(false);
-      showToast('Perubahan profil berhasil disimpan!', 'success');
+      showToast(t('profile.saveSuccess'), 'success');
       return true;
     } catch {
-      showToast('Perubahan gagal disimpan. Periksa koneksimu dan coba lagi.', 'error');
+      showToast(t('profile.saveFail'), 'error');
       return false;
     }
   };
@@ -343,7 +361,7 @@ export default function ProfileView() {
     <div className="main-content view-enter" style={{ padding: '32px 36px', maxWidth: 680, margin: '0 auto' }}>
 
       <h1 style={{ margin: '0 0 24px', fontSize: 24, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8 }}>
-        <AppIcon name="user" size={22} /> Profil & Pengaturan
+        <AppIcon name="user" size={22} /> {t('profile.title')}
       </h1>
 
       {/* -- Profile Card */}
@@ -363,12 +381,12 @@ export default function ProfileView() {
               {form.jurusan} · Semester {form.semester}
             </p>
             <p style={{ margin: '4px 0 0', fontSize: 12, color: 'var(--color-text-secondary)' }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AppIcon name="book" size={12} /> {form.bahasa}</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AppIcon name="book" size={12} /> {form.bahasa === 'en' ? 'English' : 'Indonesia'}</span>
             </p>
           </div>
           {!editMode && (
             <button className="btn-ghost" onClick={() => { setErrors({}); setEditMode(true); }} style={{ padding: '8px 16px', fontSize: 13 }}>
-              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AppIcon name="pencil" size={12} /> Edit</span>
+              <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AppIcon name="pencil" size={12} /> {t('profile.edit')}</span>
             </button>
           )}
         </div>
@@ -378,7 +396,7 @@ export default function ProfileView() {
           <div>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14, marginBottom: 14 }}>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 5 }}>Nama</label>
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 5 }}>{t('profile.name')}</label>
                 <input
                   value={form.name}
                   onChange={e => update('name', e.target.value)}
@@ -390,31 +408,31 @@ export default function ProfileView() {
                 {errText('name')}
               </div>
               <div>
-                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 5 }}>Semester</label>
+                <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 5 }}>{t('profile.semester')}</label>
                 <select value={form.semester} onChange={e => update('semester', e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
                   {SEMESTER_OPTIONS.map(s => <option key={s} value={s}>Semester {s}</option>)}
                 </select>
               </div>
             </div>
             <div style={{ marginBottom: 14 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 5 }}>Jurusan</label>
+              <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 5 }}>{t('profile.major')}</label>
               <select value={form.jurusan} onChange={e => update('jurusan', e.target.value)} style={{ ...inputStyle, cursor: 'pointer' }}>
                 {JURUSAN_OPTIONS.map(j => <option key={j} value={j}>{j}</option>)}
               </select>
             </div>
             <div style={{ marginBottom: 20 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 8 }}>Preferensi Bahasa</label>
+              <label style={{ fontSize: 12, fontWeight: 600, display: 'block', marginBottom: 8 }}>{t('profile.language')}</label>
               <div style={{ display: 'flex', gap: 10 }}>
-                {['Indonesia', 'English'].map(lang => (
-                  <button key={lang} onClick={() => update('bahasa', lang)} style={{ flex: 1, padding: '9px', borderRadius: 9, fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s', background: form.bahasa === lang ? 'var(--color-primary)' : 'var(--color-bg)', color: form.bahasa === lang ? '#fff' : 'var(--color-text-secondary)', border: `1.5px solid ${form.bahasa === lang ? 'var(--color-primary)' : 'var(--color-border)'}` }}>
-                    {lang === 'Indonesia' ? 'ID Indonesia' : 'EN English'}
+                {[{ code: 'id', label: 'ID Indonesia' }, { code: 'en', label: 'EN English' }].map(lang => (
+                  <button key={lang.code} onClick={() => update('bahasa', lang.code)} style={{ flex: 1, padding: '9px', borderRadius: 9, fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'all 0.2s', background: form.bahasa === lang.code ? 'var(--color-primary)' : 'var(--color-bg)', color: form.bahasa === lang.code ? '#fff' : 'var(--color-text-secondary)', border: `1.5px solid ${form.bahasa === lang.code ? 'var(--color-primary)' : 'var(--color-border)'}` }}>
+                    {lang.label}
                   </button>
                 ))}
               </div>
             </div>
             <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn-ghost" onClick={resetProfileDraft} style={{ flex: 1 }}>Batal</button>
-              <button className="btn-primary" onClick={handleSave} style={{ flex: 2, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><AppIcon name="check" size={14} color="#fff" /> Simpan Perubahan</button>
+              <button className="btn-ghost" onClick={resetProfileDraft} style={{ flex: 1 }}>{t('profile.cancel')}</button>
+              <button className="btn-primary" onClick={handleSave} style={{ flex: 2, display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}><AppIcon name="check" size={14} color="#fff" /> {t('profile.save')}</button>
             </div>
           </div>
         )}
@@ -422,7 +440,7 @@ export default function ProfileView() {
 
       {/* -- Stats Card */}
       <div className="card" style={{ padding: '20px 24px', marginBottom: 20 }}>
-        <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><AppIcon name="dashboard" size={16} /> Statistik Penggunaan</h3>
+        <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><AppIcon name="dashboard" size={16} /> {t('profile.stats')}</h3>
         <div className="stats-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 14 }}>
           {[
             {
@@ -493,12 +511,12 @@ export default function ProfileView() {
 
       {/* -- Notification Preferences */}
       <div className="card" style={{ padding: '20px 24px', marginBottom: 20 }}>
-        <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><AppIcon name="bell" size={16} /> Preferensi Notifikasi</h3>
+        <h3 style={{ margin: '0 0 16px', fontSize: 15, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8 }}><AppIcon name="bell" size={16} /> {t('profile.notifications')}</h3>
         {[
-          { label: 'Efek Suara', sub: 'Putar suara saat menyelesaikan tugas', val: soundEnabled, set: setSoundEnabled },
-          { label: 'Pengingat Harian', sub: 'Ingatkan tools AI baru setiap hari', val: notif1, set: setNotif1 },
-          { label: 'Tips Penggunaan Mingguan', sub: 'Tips produktivitas setiap minggu', val: notif2, set: setNotif2 },
-          { label: 'Pembaruan Tool Baru', sub: 'Tools baru sesuai jurusanmu', val: notif3, set: setNotif3 },
+          { label: t('profile.sound'), sub: t('profile.soundSub'), val: soundEnabled, set: setSoundEnabled },
+          { label: t('profile.dailyDiscovery'), sub: t('profile.dailyDiscoverySub'), val: notif1, set: setNotif1 },
+          { label: t('profile.weeklyReport'), sub: t('profile.weeklyReportSub'), val: notif2, set: setNotif2 },
+          { label: t('profile.emailNotif'), sub: t('profile.emailNotifSub'), val: notif3, set: setNotif3 },
         ].map((item, i, arr) => (
           <div key={i} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 0', borderBottom: i < arr.length - 1 ? '1px solid var(--color-border)' : 'none' }}>
             <div>
@@ -523,7 +541,7 @@ export default function ProfileView() {
           onMouseEnter={e => { e.currentTarget.style.borderColor = '#CBD5E1'; e.currentTarget.style.color = 'var(--color-text-primary)'; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--color-border)'; e.currentTarget.style.color = 'var(--color-text-secondary)'; }}
         >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AppIcon name="logout" size={14} /> Keluar</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AppIcon name="logout" size={14} /> {t('profile.logout')}</span>
         </button>
 
         <button
@@ -536,7 +554,7 @@ export default function ProfileView() {
           onMouseEnter={e => { e.currentTarget.style.background = '#FEE2E2'; }}
           onMouseLeave={e => { e.currentTarget.style.background = '#FFF5F5'; }}
         >
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AppIcon name="trash" size={14} /> Reset Demo</span>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><AppIcon name="trash" size={14} /> {t('profile.resetDemoBtn')}</span>
         </button>
       </div>
 

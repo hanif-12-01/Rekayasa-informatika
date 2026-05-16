@@ -1,7 +1,8 @@
-import { createContext, useContext, useEffect, useState, useCallback } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback, useMemo } from 'react';
 import { authService } from '../services/authService';
 import { bookmarkService } from '../services/bookmarkService';
 import { taskService } from '../services/taskService';
+import { normalizeLanguage, createTranslator } from '../utils/i18n';
 
 const AppContext = createContext(null);
 
@@ -10,6 +11,7 @@ export function AppProvider({ children }) {
   const [user, setUser] = useState(null); // null = not onboarded yet
   const [token, setToken] = useState(() => localStorage.getItem('leva_token'));
   const [isBootstrapping, setIsBootstrapping] = useState(true);
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [authError, setAuthError] = useState(null);
 
   // Active view: 'landing' | 'onboarding' | 'dashboard' | 'chat' | 'library' | 'profile'
@@ -30,6 +32,25 @@ export function AppProvider({ children }) {
 
   // Toast notification
   const [toasts, setToasts] = useState([]);
+
+  // i18n — language preference
+  const [language, setLanguageState] = useState(() => {
+    try {
+      const stored = localStorage.getItem('leva_language');
+      if (stored) return normalizeLanguage(stored);
+    } catch { /* */ }
+    return 'id';
+  });
+
+  const t = useMemo(() => createTranslator(language), [language]);
+
+  const setLanguage = useCallback((lang) => {
+    const normalized = normalizeLanguage(lang);
+    setLanguageState(normalized);
+    try {
+      localStorage.setItem('leva_language', normalized);
+    } catch { /* */ }
+  }, []);
 
   // UX sound effect preference
   const [soundEnabled, setSoundEnabled] = useState(() => {
@@ -67,6 +88,7 @@ export function AppProvider({ children }) {
     const bootstrapAuth = async () => {
       if (!token) {
         setIsBootstrapping(false);
+        setIsAuthenticated(false);
         return;
       }
       
@@ -75,8 +97,14 @@ export function AppProvider({ children }) {
         if (!isMounted) return;
         setUser(me);
         if (me.status === 'ACTIVE') {
-          setActiveViewState('dashboard');
+          // Don't auto-navigate — let the user decide via CTA buttons.
+          // Only mark as authenticated so LandingView buttons can shortcut.
+          setIsAuthenticated(true);
+          // Sync language from user profile
+          const profileLang = me?.profile?.language_preference ?? me?.language_preference ?? me?.bahasa;
+          if (profileLang) setLanguage(profileLang);
         } else {
+          setIsAuthenticated(false);
           setActiveViewState('onboarding');
         }
       } catch (error) {
@@ -84,8 +112,9 @@ export function AppProvider({ children }) {
         if (!isMounted) return;
         setToken(null);
         setUser(null);
+        setIsAuthenticated(false);
         setAuthError(error.message);
-        setActiveViewState('onboarding');
+        // Don't force to onboarding — stay on landing and let user click
       } finally {
         if (isMounted) setIsBootstrapping(false);
       }
@@ -123,6 +152,22 @@ export function AppProvider({ children }) {
     setHistoryTasks(data.tasks ?? []);
     return data;
   }, []);
+
+  // Explicit "enter the app" function — used by Landing CTA buttons.
+  // If user is already authenticated, go straight to dashboard.
+  // Otherwise go to onboarding.
+  const enterApp = useCallback((mode = 'login') => {
+    if (isAuthenticated && user?.status === 'ACTIVE') {
+      setActiveViewState('dashboard');
+      return;
+    }
+    setActiveViewState('onboarding');
+    if (mode === 'login') {
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('leva:open-login'));
+      }, 50);
+    }
+  }, [isAuthenticated, user]);
 
   const setActiveView = (nextView, options = {}) => {
     const forceNavigate = options.force === true;
@@ -186,6 +231,7 @@ export function AppProvider({ children }) {
     <AppContext.Provider
       value={{
         isBootstrapping,
+        isAuthenticated,
         authError,
         user,
         setUser,
@@ -194,6 +240,7 @@ export function AppProvider({ children }) {
         activeView,
         setActiveView,
         setActiveViewState,
+        enterApp,
         chatHasDraft,
         setChatHasDraft,
         profileHasUnsavedChanges,
@@ -209,6 +256,9 @@ export function AppProvider({ children }) {
         toasts,
         showToast,
         dismissToast,
+        language,
+        setLanguage,
+        t,
         soundEnabled,
         setSoundEnabled: updateSoundEnabled,
         saveToolToLibrary,

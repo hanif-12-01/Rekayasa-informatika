@@ -60,6 +60,7 @@ Command frontend yang dijalankan: `npm run build`
 ### BUG-005 — Tool manual hilang setelah refresh/relog
 * Penyebab: `handleAddTool` hanya `setBookmarks`, tidak `POST /bookmarks`
 * Fix: Tambah Manual diubah menjadi cari tool dari backend dan simpan via `tool_id`
+* Catatan QA Khusus: Jika search tool seperti "Gemini" atau "ChatGPT" mengembalikan hasil kosong, ini BUKAN bug frontend. Ini karena data tool tersebut belum disisipkan di database/seeder backend. Frontend sudah menampilkan empty state yang tepat untuk kasus ini.
 * Status: Needs Verification
 
 ### BUG-006 — Statistik Sangat Bagus tidak bertambah
@@ -75,6 +76,28 @@ Command frontend yang dijalankan: `npm run build`
 ### BUG-008 — Request `/tasks` dan `/bookmarks` berulang
 * Penyebab: `refreshSavedTools` dan `refreshHistoryTasks` tidak stabil sebagai dependency useEffect
 * Fix: `useCallback` + guard effect
+* Status: Needs Verification
+### BUG-009 — Landing Page berpindah ke Dashboard tanpa autentikasi eksplisit
+
+* Halaman: Landing Page
+* Gejala: User membuka aplikasi, scroll di Landing Page, lalu tiba-tiba berpindah ke Dashboard tanpa menekan tombol apapun.
+* Expected: Landing Page tetap ditampilkan sampai user secara eksplisit menekan tombol "Masuk" atau "Mulai Gratis".
+* Actual: Bootstrap auth di `AppContext` langsung memanggil `setActiveViewState('dashboard')` jika token valid, sehingga Landing Page tidak pernah tampil lama.
+* Penyebab: `bootstrapAuth()` di `AppContext.jsx` secara otomatis menjalankan `setActiveViewState('dashboard')` saat `me.status === 'ACTIVE'`, tanpa memeriksa apakah user sedang di Landing.
+* File yang diubah: `AppContext.jsx`, `LandingView.jsx`
+* Fix: Bootstrap auth kini hanya memvalidasi token dan menyimpan `user` + `isAuthenticated` flag, tanpa auto-navigasi. Ditambahkan function `enterApp(mode)` yang dipanggil secara eksplisit oleh tombol CTA di Landing. Jika `isAuthenticated` true, langsung ke Dashboard; jika tidak, ke Onboarding.
+* Cara verifikasi: (1) Hapus `leva_token`, refresh, scroll Landing → tetap di Landing. (2) Login valid → masuk Dashboard. (3) Refresh saat token valid → tetap di Landing sampai klik tombol. (4) Scroll Landing tidak memanggil `setActiveView('dashboard')`.
+* Status: Needs Verification
+### BUG-010 — Preferensi bahasa tidak mengubah UI aplikasi
+
+* Halaman: Profile → semua halaman
+* Gejala: User mengubah bahasa ke English di Profile, tetapi teks UI tetap Bahasa Indonesia.
+* Expected: Saat bahasa diubah dan disimpan, label Sidebar, Dashboard, Library, dan Profile berubah ke bahasa yang dipilih tanpa refresh.
+* Actual: Bahasa hanya disimpan sebagai state lokal tanpa sistem terjemahan. UI tetap hardcoded Bahasa Indonesia.
+* Penyebab: Tidak ada sistem i18n. ProfileView menyimpan `bahasa: "Indonesia"` ke state lokal tanpa memengaruhi teks komponen lain.
+* File yang diubah: `src/utils/i18n.js` (baru), `AppContext.jsx`, `ProfileView.jsx`, `Sidebar.jsx`, `DashboardView.jsx`, `LibraryView.jsx`
+* Fix: Dibuat dictionary i18n (`id`/`en`) dengan helper `createTranslator()`. AppContext menyediakan `language`, `setLanguage`, dan `t()` ke seluruh komponen. ProfileView kini menyimpan `language_preference` ke backend via `profileService.update()` dan langsung memanggil `setLanguage()` setelah save berhasil.
+* Cara verifikasi: Buka Profile → ubah bahasa ke English → Simpan. Sidebar, Dashboard, Library, dan Profile harus langsung berubah ke English. Refresh → bahasa tetap English. Ubah kembali ke Indonesia → semua kembali ke Bahasa Indonesia.
 * Status: Needs Verification
 
 ## Checklist Verifikasi Manual

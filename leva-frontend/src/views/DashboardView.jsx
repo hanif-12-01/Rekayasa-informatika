@@ -116,6 +116,7 @@ function StarRating({ rating }) {
 
 // --- Featured Tool Card (large, horizontal scroll)
 function FeaturedToolCard({ tool, onSave, isSaved, isSaving }) {
+  const { t } = useApp();
   const [showTooltip, setShowTooltip] = useState(false);
   const tooltipTimerRef = useRef(null);
   const handleSave = () => {
@@ -197,7 +198,7 @@ function FeaturedToolCard({ tool, onSave, isSaved, isSaving }) {
           }}
         >
           {/* UI/UX Fix: Step 6 — Output device harus memberi respond jelas ke aksi user. Step 7 — Aksi destruktif (hapus) harus ada safeguard/konfirmasi. Survei: 52,5% user sulit temukan referensi. */}
-          {isSaved ? 'Tersimpan ✓' : isSaving ? 'Menyimpan...' : 'Simpan'}
+          {isSaved ? t('dashboard.saved') : isSaving ? t('dashboard.saving') : t('dashboard.save')}
         </button>
         <a
           href={resolveToolUrl(tool.url)} target="_blank" rel="noreferrer"
@@ -209,7 +210,7 @@ function FeaturedToolCard({ tool, onSave, isSaved, isSaving }) {
           }}
         >
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-            Buka <AppIcon name="external-link" size={14} color="#fff" />
+            {t('dashboard.open')} <AppIcon name="external-link" size={14} color="#fff" />
           </span>
         </a>
       </div>
@@ -315,13 +316,14 @@ function DailyProgressWidget({
   hasLatestTask,
   onContinue,
 }) {
+  const { t } = useApp();
   const progressPct = isLoading ? 0 : stats.progressPct;
   const statValue = (value) => (isLoading ? '--' : value);
 
   const statItems = [
-    { label: 'Tugas Hari Ini', value: statValue(stats.tasksToday) },
-    { label: 'Sub-tugas Selesai', value: statValue(stats.doneToday) },
-    { label: 'Sub-tugas Tertunda', value: statValue(stats.pendingToday) },
+    { label: t('dashboard.tasksToday'), value: statValue(stats.tasksToday) },
+    { label: t('dashboard.subDone'), value: statValue(stats.doneToday) },
+    { label: t('dashboard.subPending'), value: statValue(stats.pendingToday) },
   ];
 
   return (
@@ -332,7 +334,7 @@ function DailyProgressWidget({
             {greeting}, {firstName}! <AppIcon name={greetIcon} size={20} />
           </h1>
           <p style={{ margin: '6px 0 0', fontSize: 14, color: 'var(--color-text-secondary)' }}>
-            Ringkasan produktivitasmu hari ini.
+            {t('dashboard.summary')}
           </p>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -342,7 +344,7 @@ function DailyProgressWidget({
             background: 'var(--color-secondary-light)', color: 'var(--color-secondary)',
             padding: '3px 10px', borderRadius: 999,
           }}>
-            <AppIcon name="refresh" size={12} /> Diperbarui otomatis setiap hari
+            <AppIcon name="refresh" size={12} /> {t('dashboard.updated')}
           </span>
         </div>
       </div>
@@ -358,8 +360,8 @@ function DailyProgressWidget({
 
       <div style={{ marginTop: 18 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: 'var(--color-text-secondary)', marginBottom: 6 }}>
-          <span>Progress hari ini</span>
-          <span>{progressPct}% selesai</span>
+          <span>{t('dashboard.progress')}</span>
+          <span>{progressPct}% {t('dashboard.done')}</span>
         </div>
         <div style={{ height: 8, borderRadius: 999, background: 'var(--color-border)', overflow: 'hidden' }}>
           <div style={{ width: `${progressPct}%`, height: '100%', background: 'var(--color-secondary)', transition: 'width 0.4s ease' }} />
@@ -368,7 +370,7 @@ function DailyProgressWidget({
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, marginTop: 20, flexWrap: 'wrap' }}>
         <p style={{ margin: 0, fontSize: 13, color: 'var(--color-text-secondary)' }}>
-          {hasLatestTask ? 'Lanjutkan tugas terakhir yang sudah kamu buat.' : 'Belum ada tugas yang bisa dilanjutkan.'}
+          {hasLatestTask ? t('dashboard.continuePrompt') : t('dashboard.noTask')}
         </p>
         <button
           type="button"
@@ -377,7 +379,7 @@ function DailyProgressWidget({
           disabled={!hasLatestTask}
           style={{ padding: '10px 16px', fontSize: 13, opacity: hasLatestTask ? 1 : 0.6, cursor: hasLatestTask ? 'pointer' : 'not-allowed' }}
         >
-          Lanjutkan Tugas Terakhir
+          {t('dashboard.continueTask')}
         </button>
       </div>
     </section>
@@ -393,6 +395,7 @@ export default function DashboardView() {
     savedTools,
     refreshSavedTools,
     showToast,
+    t,
   } = useApp();
   const [activeFilter, setActiveFilter] = useState('Semua');
   const [tools, setTools] = useState([]);
@@ -500,7 +503,7 @@ export default function DashboardView() {
   const jurusan   = user ? user.jurusan : 'Teknik Informatika';
 
   const hour = new Date().getHours();
-  const greeting = hour < 11 ? 'Selamat pagi' : hour < 15 ? 'Selamat siang' : hour < 18 ? 'Selamat sore' : 'Selamat malam';
+  const greeting = hour < 11 ? t('dashboard.greeting.morning') : hour < 15 ? t('dashboard.greeting.afternoon') : hour < 18 ? t('dashboard.greeting.evening') : t('dashboard.greeting.night');
   const greetIcon = hour < 11 ? 'lamp' : hour < 15 ? 'refresh' : hour < 18 ? 'calendar' : 'sparkles';
 
   const today = new Date().toLocaleDateString('id-ID', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
@@ -518,7 +521,7 @@ export default function DashboardView() {
 
   const handleSaveTool = async (tool) => {
     if (savedToolIds.has(tool.id)) {
-      showToast('Tool sudah ada di Library.', 'info');
+      showToast(t('dashboard.alreadySaved'), 'info');
       return;
     }
 
@@ -527,12 +530,12 @@ export default function DashboardView() {
 
     try {
       await bookmarkService.create(tool.id);
-      showToast('AI sedang men-tag tool... cek di Library beberapa detik lagi', 'success');
+      showToast(t('dashboard.aiTagging'), 'success');
       if (refreshSavedTools) {
         await refreshSavedTools();
       }
     } catch (error) {
-      const message = error.response?.data?.message ?? 'Gagal menyimpan tool. Coba lagi.';
+      const message = error.response?.data?.message ?? t('dashboard.saveFail');
       showToast(message, 'error');
     } finally {
       setSavingToolIds((prev) => prev.filter((toolId) => toolId !== tool.id));
@@ -583,9 +586,9 @@ export default function DashboardView() {
         <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10, marginBottom: 14, flexWrap: 'wrap' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
             <AppIcon name="flame" size={18} />
-            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>Tools Pilihan Hari Ini</h2>
+            <h2 style={{ margin: 0, fontSize: 18, fontWeight: 700 }}>{t('dashboard.featured')}</h2>
             <span style={{ fontSize: 13, color: 'var(--color-text-secondary)', marginLeft: 4 }}>
-              - dipilihkan khusus untuk {jurusan}
+              {t('dashboard.featuredSub')} {jurusan}
             </span>
           </div>
           <button
@@ -594,7 +597,7 @@ export default function DashboardView() {
             onClick={handleReplayTour}
             style={{ padding: '7px 12px', fontSize: 12, display: 'inline-flex', alignItems: 'center', gap: 6 }}
           >
-            <AppIcon name="sparkles" size={12} /> Mulai Tutorial
+            <AppIcon name="sparkles" size={12} /> {t('dashboard.startTutorial')}
           </button>
         </div>
         {toolsError ? (
