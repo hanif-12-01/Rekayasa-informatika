@@ -61,9 +61,9 @@ export default function Sidebar() {
   }, []);
 
   useEffect(() => {
-    if (!refreshHistoryTasks) return;
+    if (!user || !refreshHistoryTasks) return;
     refreshHistoryTasks().catch(() => {});
-  }, [refreshHistoryTasks]);
+  }, [user, refreshHistoryTasks]);
 
   const handleHistoryClick = (task) => {
     setActiveTask(task);

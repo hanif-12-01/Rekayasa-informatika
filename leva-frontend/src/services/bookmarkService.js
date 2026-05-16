@@ -20,6 +20,10 @@ export const bookmarkService = {
     return data.data || data;
   },
 
+  async create(toolId, note = null) {
+    return this.saveBookmark(toolId, note);
+  },
+
   async deleteBookmark(toolId) {
     const { data } = await api.delete(`/bookmarks/${toolId}`);
     return data;

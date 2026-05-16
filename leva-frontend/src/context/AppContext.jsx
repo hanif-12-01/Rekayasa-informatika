@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { authService } from '../services/authService';
 import { bookmarkService } from '../services/bookmarkService';
 import { taskService } from '../services/taskService';
@@ -112,17 +112,17 @@ export function AppProvider({ children }) {
     setToasts((prev) => prev.filter((toastItem) => toastItem.id !== toastId));
   };
 
-  const refreshSavedTools = async (params = {}) => {
+  const refreshSavedTools = useCallback(async (params = {}) => {
     const data = await bookmarkService.list(params);
     setSavedTools(data.bookmarks ?? []);
     return data;
-  };
+  }, []);
 
-  const refreshHistoryTasks = async (params = {}) => {
+  const refreshHistoryTasks = useCallback(async (params = {}) => {
     const data = await taskService.list(params);
     setHistoryTasks(data.tasks ?? []);
     return data;
-  };
+  }, []);
 
   const setActiveView = (nextView, options = {}) => {
     const forceNavigate = options.force === true;

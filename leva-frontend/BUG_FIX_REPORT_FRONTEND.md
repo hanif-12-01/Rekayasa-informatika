@@ -57,6 +57,26 @@ Command frontend yang dijalankan: `npm run build`
 * Cara verifikasi: Masuk ke Library, klik-klik filter secara super cepat, dan pastikan UI berhenti *loading* pada permintaan terakhir.
 * Status: Fixed
 
+### BUG-005 — Tool manual hilang setelah refresh/relog
+* Penyebab: `handleAddTool` hanya `setBookmarks`, tidak `POST /bookmarks`
+* Fix: Tambah Manual diubah menjadi cari tool dari backend dan simpan via `tool_id`
+* Status: Needs Verification
+
+### BUG-006 — Statistik Sangat Bagus tidak bertambah
+* Penyebab: priorityKey manual `good`, bukan `very_good`
+* Fix: canonical priority normalizer diterapkan
+* Status: Needs Verification
+
+### BUG-007 — Dashboard save memakai method service yang tidak ada
+* Penyebab: `bookmarkService.create` tidak tersedia
+* Fix: tambah alias `create`
+* Status: Needs Verification
+
+### BUG-008 — Request `/tasks` dan `/bookmarks` berulang
+* Penyebab: `refreshSavedTools` dan `refreshHistoryTasks` tidak stabil sebagai dependency useEffect
+* Fix: `useCallback` + guard effect
+* Status: Needs Verification
+
 ## Checklist Verifikasi Manual
 
 * [x] Library menampilkan total tools sesuai jumlah bookmark.

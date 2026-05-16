@@ -44,3 +44,16 @@ Beberapa bug yang ditemukan selama proses Smoke Test telah diperbaiki:
 - **BUG-002 (Library)**: Tag cloud (sidebar TAG) sudah tampil dengan mengekstrak dari bookmark jika response API tags kosong (Fixed, Needs Verification).
 - **BUG-003 (Chat Workspace)**: Polling `tasks/status` kini berhenti secara otomatis jika user berpindah halaman (unmount) (Fixed, Needs Verification).
 - **BUG-004 (Library)**: Loading UI tidak akan lagi _stuck_ jika user memindah filter secara cepat karena diterapkan mekanisme _race-condition check_ dengan `useRef` (Fixed, Needs Verification).
+- **BUG-005 (Library)**: Tool manual kini dicari dari backend dan disave via tool_id, tidak hilang setelah refresh (Fixed, Needs Verification).
+- **BUG-006 (Library)**: Statistik "Sangat Bagus" sekarang bertambah berkat canonical priority (Fixed, Needs Verification).
+- **BUG-007 (Dashboard)**: Tombol Simpan di Dashboard berhasil memakai method service alias `create` (Fixed, Needs Verification).
+- **BUG-008 (App)**: Request looping `/tasks` dan `/bookmarks` berhasil diatasi dengan `useCallback` dan guard (Fixed, Needs Verification).
+
+## Checklist Verifikasi Lanjutan
+* [ ] Tambah tool dari Library menghasilkan POST `/api/bookmarks`
+* [ ] Payload POST `/bookmarks` berisi `tool_id`
+* [ ] Setelah refresh/relog, bookmark tetap muncul
+* [ ] Dashboard Simpan menghasilkan POST `/api/bookmarks`
+* [ ] Statistik Sangat Bagus sesuai jumlah bookmark `very_good`
+* [ ] Saat berada di Library, tidak ada request `/api/tasks` berulang
+* [ ] `GET /bookmarks` tidak loop terus-menerus

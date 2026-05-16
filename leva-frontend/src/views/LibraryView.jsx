@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import { bookmarkService } from '../services/bookmarkService';
+import { toolService } from '../services/toolService';
 import { PRIORITY_LABELS } from '../utils/fieldMapper';
 import Modal from '../components/Modal';
 import AppIcon from '../components/AppIcon';
@@ -100,7 +101,7 @@ function PriorityBadge({ priorityKey, label }) {
   const style = meta
     ? { background: meta.bg, color: meta.color }
     : { background: '#E2E8F0', color: '#64748B' };
-  const text = label || meta?.label || 'Menunggu';
+  const text = label || meta?.label || 'Menunggu Label';
   return (
     <span style={{ ...style, fontSize: 11, fontWeight: 700, padding: '3px 10px', borderRadius: 999, whiteSpace: 'nowrap' }}>
       {text}
@@ -234,7 +235,15 @@ export default function LibraryView() {
   const [sortBy, setSortBy] = useState('latest');
   const [showAddModal, setShowAddModal] = useState(false);
   const [toolToDelete, setToolToDelete] = useState(null);
-  const [newTool, setNewTool] = useState({ name: '', url: '', note: '', category: 'Research' });
+
+  const [searchToolQuery, setSearchToolQuery] = useState('');
+  const [debouncedSearchToolQuery, setDebouncedSearchToolQuery] = useState('');
+  const [searchToolResults, setSearchToolResults] = useState([]);
+  const [isSearchingTool, setIsSearchingTool] = useState(false);
+  const [selectedToolToSave, setSelectedToolToSave] = useState(null);
+  const [saveToolNote, setSaveToolNote] = useState('');
+  const [isSavingTool, setIsSavingTool] = useState(false);
+  
   const [bookmarks, setBookmarks] = useState([]);
   const [pagination, setPagination] = useState({ current_page: 1, total: 0, last_page: 1 });
   const [isLoading, setIsLoading] = useState(true);
@@ -314,6 +323,38 @@ export default function LibraryView() {
   }, [fetchTags]);
 
   useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      setDebouncedSearchToolQuery(searchToolQuery.trim());
+    }, 300);
+    return () => clearTimeout(timeoutId);
+  }, [searchToolQuery]);
+
+  useEffect(() => {
+    if (!showAddModal) return;
+
+    let isMounted = true;
+    const fetchSearchTools = async () => {
+      setIsSearchingTool(true);
+      try {
+        let data;
+        if (debouncedSearchToolQuery) {
+          data = await toolService.searchTools(debouncedSearchToolQuery, 12);
+        } else {
+          data = await toolService.list({ per_page: 12 });
+        }
+        if (isMounted) setSearchToolResults(data.tools ?? []);
+      } catch {
+        if (isMounted) setSearchToolResults([]);
+      } finally {
+        if (isMounted) setIsSearchingTool(false);
+      }
+    };
+
+    fetchSearchTools();
+    return () => { isMounted = false; };
+  }, [debouncedSearchToolQuery, showAddModal]);
+
+  useEffect(() => {
     if (refreshSavedTools) {
       refreshSavedTools().catch(() => {});
     }
@@ -334,7 +375,7 @@ export default function LibraryView() {
     const priorityLabel = item?.priority_label
       ?? item?.priority
       ?? (utilityPriorityRaw ? PRIORITY_LABELS[utilityPriorityRaw]?.label : null)
-      ?? 'Menunggu';
+      ?? 'Menunggu Label';
     const utilityPriority = getNormalizedPriorityKey(utilityPriorityRaw, priorityLabel);
     const keywords = Array.isArray(item?.semantic_keywords)
       ? item.semantic_keywords
@@ -424,26 +465,27 @@ export default function LibraryView() {
     }
   };
 
-  const handleAddTool = () => {
-    if (!newTool.name.trim() || !newTool.url.trim()) return;
-    const entry = {
-      id: Date.now(),
-      name: newTool.name,
-      url: newTool.url.replace(/^https?:\/\//, ''),
-      priority: 'Sangat Bagus',
-      priorityKey: 'good',
-      pricingType: 'freemium',
-      category: newTool.category,
-      keywords: [newTool.category.toLowerCase(), 'ai tools', 'manual'],
-      savedAt: new Date().toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' }),
-      savedTimestamp: Date.now(),
-      description: '',
-      rating: 0,
-      note: newTool.note,
-    };
-    setBookmarks(prev => [entry, ...prev]);
-    setNewTool({ name: '', url: '', note: '', category: 'Research' });
-    setShowAddModal(false);
+  const handleAddTool = async () => {
+    if (!selectedToolToSave || isSavingTool) return;
+    setIsSavingTool(true);
+    try {
+      await bookmarkService.saveBookmark(selectedToolToSave.id, saveToolNote);
+      showToast('Tool berhasil disimpan ke Library.', 'success');
+      fetchBookmarks();
+      fetchTags();
+      if (refreshSavedTools) {
+        refreshSavedTools().catch(() => {});
+      }
+      setShowAddModal(false);
+      setSearchToolQuery('');
+      setSelectedToolToSave(null);
+      setSaveToolNote('');
+    } catch (error) {
+      const message = error.response?.data?.message ?? 'Gagal menyimpan tool. Coba lagi.';
+      showToast(message, 'error');
+    } finally {
+      setIsSavingTool(false);
+    }
   };
 
   const inputStyle = {
@@ -699,29 +741,91 @@ export default function LibraryView() {
 
       {/* Add Tool Modal */}
       {showAddModal && (
-        <Modal title="Tambah Tool Baru" onClose={() => setShowAddModal(false)}>
+        <Modal title="Cari Tool untuk Disimpan" onClose={() => {
+          setShowAddModal(false);
+          setSearchToolQuery('');
+          setSelectedToolToSave(null);
+          setSaveToolNote('');
+        }}>
           <div>
-            <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Nama Tool *</label>
-            <input value={newTool.name} onChange={e => setNewTool(p => ({ ...p, name: e.target.value }))} placeholder="Contoh: Perplexity AI" style={inputStyle} />
-            <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>URL Tool *</label>
-            <input value={newTool.url} onChange={e => setNewTool(p => ({ ...p, url: e.target.value }))} placeholder="https://perplexity.ai" style={inputStyle} />
-            <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Kategori</label>
-            <select value={newTool.category} onChange={e => setNewTool(p => ({ ...p, category: e.target.value }))} style={{ ...inputStyle }}>
-              {CATEGORY_FILTERS.filter(f => f !== 'Semua').map(c => <option key={c} value={c}>{c}</option>)}
-            </select>
-            <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Catatan (opsional)</label>
-            <textarea value={newTool.note} onChange={e => setNewTool(p => ({ ...p, note: e.target.value }))} placeholder="Untuk apa tool ini?" rows={3} style={{ ...inputStyle, resize: 'none' }} />
-            <p style={{ fontSize: 12, color: 'var(--color-text-secondary)', margin: '0 0 16px' }}>
-              Leva akan otomatis menganalisis dan memberikan label prioritas serta keywords.
-            </p>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button className="btn-ghost" onClick={() => setShowAddModal(false)} style={{ flex: 1 }}>Batal</button>
-              <button className="btn-primary" onClick={handleAddTool} style={{ flex: 2 }}>
-                <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                  <AppIcon name="plus" size={14} color="#fff" /> Tambah & Generate Label
-                </span>
-              </button>
-            </div>
+            {!selectedToolToSave ? (
+              <>
+                <input
+                  value={searchToolQuery}
+                  onChange={(e) => setSearchToolQuery(e.target.value)}
+                  placeholder="Ketik nama tool..."
+                  style={inputStyle}
+                  autoFocus
+                />
+                
+                <div style={{ maxHeight: 300, overflowY: 'auto', marginBottom: 16 }}>
+                  {isSearchingTool ? (
+                    <p style={{ textAlign: 'center', fontSize: 13, color: 'var(--color-text-secondary)', padding: 20 }}>Mencari tool...</p>
+                  ) : searchToolResults.length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '30px 10px', background: 'var(--color-bg)', borderRadius: 12 }}>
+                      <p style={{ margin: '0 0 4px', fontSize: 14, fontWeight: 600, color: 'var(--color-text-primary)' }}>Tool tidak ditemukan</p>
+                      <p style={{ margin: 0, fontSize: 12, color: 'var(--color-text-secondary)' }}>Tool belum tersedia di database. Pilih tool dari hasil pencarian agar bisa disimpan permanen.</p>
+                    </div>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                      {searchToolResults.map((tool) => (
+                        <button
+                          key={tool.id}
+                          type="button"
+                          onClick={() => setSelectedToolToSave(tool)}
+                          style={{
+                            display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                            padding: '12px 14px', background: 'var(--color-surface)', border: '1px solid var(--color-border)',
+                            borderRadius: 10, cursor: 'pointer', textAlign: 'left', transition: 'border-color 0.2s',
+                          }}
+                          onMouseEnter={e => e.currentTarget.style.borderColor = 'var(--color-primary)'}
+                          onMouseLeave={e => e.currentTarget.style.borderColor = 'var(--color-border)'}
+                        >
+                          <div>
+                            <p style={{ margin: 0, fontSize: 14, fontWeight: 700, color: 'var(--color-text-primary)' }}>{tool.name}</p>
+                            <p style={{ margin: '2px 0 0', fontSize: 12, color: 'var(--color-text-secondary)' }}>{tool.category}</p>
+                          </div>
+                          <AppIcon name="arrow-right" size={16} color="var(--color-text-secondary)" />
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 16px', background: 'var(--color-primary-light)', borderRadius: 10, marginBottom: 16 }}>
+                  <div>
+                    <p style={{ margin: 0, fontSize: 12, color: 'var(--color-primary)', fontWeight: 600 }}>Tool Terpilih</p>
+                    <p style={{ margin: '2px 0 0', fontSize: 16, fontWeight: 700, color: 'var(--color-text-primary)' }}>{selectedToolToSave.name}</p>
+                  </div>
+                  <button type="button" onClick={() => setSelectedToolToSave(null)} style={{ background: 'transparent', border: 'none', color: 'var(--color-primary)', fontSize: 12, fontWeight: 600, cursor: 'pointer' }}>Ganti</button>
+                </div>
+
+                <label style={{ fontSize: 13, fontWeight: 600, display: 'block', marginBottom: 6 }}>Catatan (opsional)</label>
+                <textarea
+                  value={saveToolNote}
+                  onChange={(e) => setSaveToolNote(e.target.value)}
+                  placeholder="Untuk apa tool ini?"
+                  rows={3}
+                  style={{ ...inputStyle, resize: 'none' }}
+                />
+
+                <div style={{ display: 'flex', gap: 10 }}>
+                  <button className="btn-ghost" onClick={() => {
+                    setShowAddModal(false);
+                    setSearchToolQuery('');
+                    setSelectedToolToSave(null);
+                    setSaveToolNote('');
+                  }} style={{ flex: 1 }}>Batal</button>
+                  <button className="btn-primary" onClick={handleAddTool} disabled={isSavingTool} style={{ flex: 2 }}>
+                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                      {isSavingTool ? 'Menyimpan...' : <><AppIcon name="check" size={14} color="#fff" /> Simpan ke Library</>}
+                    </span>
+                  </button>
+                </div>
+              </>
+            )}
           </div>
         </Modal>
       )}
